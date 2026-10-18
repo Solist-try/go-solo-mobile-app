@@ -1256,22 +1256,79 @@ function api_waypoints(): array
     }, $rows);
 }
 
+function api_reading_links(): array
+{
+    $links = [];
+    $add = static function (string $slug, string $waypointSlug, string $name, int $discussions) use (&$links): void {
+        if ($slug === '' || $waypointSlug === '') {
+            return;
+        }
+        foreach ($links[$slug] ?? [] as $existing) {
+            if ($existing['slug'] === $waypointSlug) {
+                return;
+            }
+        }
+        $links[$slug][] = [
+            'slug' => $waypointSlug,
+            'name' => $name,
+            'discussions' => $discussions,
+        ];
+    };
+    if (function_exists('rooms_ready') && rooms_ready()) {
+        $rows = q(
+            'SELECT r.slug AS reading_slug, w.slug, w.title,
+                    (SELECT COUNT(*) FROM waypoint_posts p WHERE p.waypoint_id = w.id AND p.hidden = 0) AS discussions
+             FROM waypoint_readings wr
+             JOIN readings r ON r.id = wr.reading_id AND r.status = ?
+             JOIN waypoints w ON w.id = wr.waypoint_id AND w.archived = 0',
+            ['published']
+        );
+        foreach ($rows as $row) {
+            $add((string) $row['reading_slug'], (string) $row['slug'], (string) $row['title'], (int) $row['discussions']);
+        }
+    }
+    if (table_has_column('waypoints', 'featured_reading_id')) {
+        $rows = q(
+            'SELECT r.slug AS reading_slug, w.slug, w.title
+             FROM waypoints w
+             JOIN readings r ON r.id = w.featured_reading_id AND r.status = ?
+             WHERE w.archived = 0 AND w.featured_reading_id IS NOT NULL',
+            ['published']
+        );
+        foreach ($rows as $row) {
+            $count = 0;
+            if (function_exists('rooms_ready') && rooms_ready()) {
+                $waypoint = one('SELECT id FROM waypoints WHERE slug = ?', [(string) $row['slug']]);
+                $count = $waypoint
+                    ? count_of('SELECT COUNT(*) AS n FROM waypoint_posts WHERE waypoint_id = ? AND hidden = 0', [(int) $waypoint['id']])
+                    : 0;
+            }
+            $add((string) $row['reading_slug'], (string) $row['slug'], (string) $row['title'], $count);
+        }
+    }
+    return $links;
+}
+
 function api_readings(): array
 {
+    $links = api_reading_links();
     $rows = q(
-        'SELECT r.slug, r.title, r.standfirst, r.body, c.slug AS category
+        'SELECT r.slug, r.title, r.standfirst, r.body, r.featured, c.slug AS category
          FROM readings r JOIN reading_categories c ON c.id = r.category_id
          WHERE r.status = ? ORDER BY r.featured DESC, r.featured_order, r.title',
         ['published']
     );
-    return array_map(static function (array $row): array {
+    return array_map(static function (array $row) use ($links): array {
         $parts = preg_split("/\n\s*\n/", trim(strip_tags((string) $row['body']))) ?: [];
+        $slug = (string) $row['slug'];
         return [
-            'slug' => (string) $row['slug'],
+            'slug' => $slug,
             'category' => (string) $row['category'],
             'title' => (string) $row['title'],
             'standfirst' => (string) $row['standfirst'],
             'paragraphs' => array_values(array_filter(array_map('trim', $parts))),
+            'featured' => (int) ($row['featured'] ?? 0) === 1,
+            'waypoints' => $links[$slug] ?? [],
         ];
     }, $rows);
 }

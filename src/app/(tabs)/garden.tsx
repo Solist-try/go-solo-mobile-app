@@ -9,7 +9,7 @@ export default function MyGarden() {
   return (
     <Screen>
       <Title>My Garden</Title>
-      <Body>What you are tending, where you are sitting, and how people may reach you.</Body>
+      <Body>My life here. What you are tending, where you are sitting, and how people may reach you.</Body>
       <GardenBody profileId={user.id} />
       <Card>
         <Muted>Tend this garden</Muted>

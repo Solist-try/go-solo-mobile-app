@@ -1,20 +1,33 @@
 import { router } from "expo-router";
-import { SessionNote } from "@/components/session-time";
 import { Banner, Body, Card, Muted, Screen, Subtitle, TextLink, Title } from "@/components/ui";
-import { formatDay } from "@/domain/format";
 import { useCommunity } from "@/state/community";
 
+function hello(name: string) {
+  const hour = new Date().getHours();
+  const time = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  return name ? `${time}, ${name}.` : `${time}.`;
+}
+
 export default function Home() {
-  const { user, content, shell, offline, unread, readingSuggestion, readings } = useCommunity();
-  const copy = content.mobile!;
+  const { user, content, shell, offline, readings, readingSuggestion } = useCommunity();
   if (!user) return null;
   const world = shell.world;
-  const seeds = world.userSeeds.filter((item) => item.userId === user.id && item.status === "active");
-  const chairs = world.memberships.filter((item) => item.userId === user.id);
-  const posts = world.campfire.filter((item) => !item.hidden).slice(0, 3);
-  const requests = world.conversations.filter((item) => item.recipientId === user.id && item.status === "request");
-  const sessions = world.sessions.filter((item) => item.memberA === user.id || item.memberB === user.id);
-  const preferredReading: Record<string, string> = {
+  const growing = user.growing.find((seed) => seed.status === "active") ?? user.growing[0];
+  const planted = world.userSeeds.find((seed) => seed.userId === user.id && seed.status === "active");
+  const chair = [...world.memberships]
+    .filter((item) => item.userId === user.id)
+    .sort((a, b) => b.joinedAt.localeCompare(a.joinedAt))[0];
+  const waypoint = chair ? shell.waypoints.find((item) => item.id === chair.waypointId) : undefined;
+  const dismissed = new Set(world.dismissedPins.filter((item) => item.userId === user.id).map((item) => item.targetId));
+  const mine = new Set(world.campfire.filter((post) => post.authorId === user.id).map((post) => post.id));
+  const reply = world.comments.find((comment) => comment.targetType === "campfire" && mine.has(comment.targetId) && comment.authorId !== user.id && !comment.hidden);
+  const nearby = world.campfire.find((post) => !post.hidden && !dismissed.has(post.id) && (post.pinned || (waypoint && post.waypointId === waypoint.id)));
+  const fire = reply
+    ? { label: "A reply is with something you shared.", href: `/campfire/${reply.targetId}` as const, title: "Open the reply" }
+    : nearby
+      ? { label: nearby.title || nearby.body.slice(0, 120), href: `/campfire/${nearby.id}` as const, title: "Open" }
+      : null;
+  const preferred: Record<string, string> = {
     "starting-over": "starting-again-in-midlife",
     "independent-living": "building-routines-that-stick",
     connection: "how-adults-make-friends",
@@ -22,81 +35,64 @@ export default function Home() {
     reflections: "permission-to-begin",
     "living-well": "creating-a-weekly-reset",
   };
-  const suggestion =
-    readings.find((item) => item.slug === preferredReading[readingSuggestion]) ??
-    readings.find((item) => item.category === readingSuggestion);
-  const dismissed = new Set(world.dismissedPins.filter((item) => item.userId === user.id).map((item) => item.targetId));
-  const pinned = world.campfire.find((item) => item.pinned && !item.hidden && !dismissed.has(item.id));
+  const thought =
+    readings.find((item) => item.featured) ??
+    readings.find((item) => item.slug === preferred[readingSuggestion]) ??
+    readings.find((item) => item.category === readingSuggestion) ??
+    readings[0];
+  const request = world.conversations.find((item) => item.recipientId === user.id && item.status === "request");
+  const note = [...world.messages].reverse().find((item) => item.authorId !== user.id);
+  const next = !growing && !planted
+    ? { line: "A seed is a tiny future.", action: "Plant a seed", href: "/seeds" as const }
+    : !waypoint
+      ? { line: "A waypoint is a chair you can come back to.", action: "See the waypoints", href: "/waypoints" as const }
+      : { line: "If you tried something, the house can hold the story.", action: "Tell the story", href: "/out-there/new" as const };
 
   return (
     <Screen>
       {offline ? <Banner>You are offline. Showing the last words this device could keep.</Banner> : null}
       {shell.fromCache ? <Banner>This is a saved copy. Pull the room open again when you have a connection.</Banner> : null}
+      <Title>{hello(user.displayName)}</Title>
       <Muted>{content.heroTagline}</Muted>
-      <Title>Hello{user.displayName ? `, ${user.displayName}` : ""}.</Title>
-      <Body>{content.heroSubhead}</Body>
-      <Card tone="gold">
-        <Muted>{copy.pinnedLabels.community}</Muted>
-        <Subtitle>{content.belief}</Subtitle>
-        <Body>{content.beliefSecond}</Body>
+
+      <Card tone="sage">
+        <Muted>Growing</Muted>
+        {growing ? <Subtitle>{growing.name}</Subtitle> : planted ? <Subtitle>{planted.title || "A seed you planted"}</Subtitle> : <Body>Nothing is growing yet.</Body>}
+        <TextLink label={growing || planted ? "Look at this seed" : "Plant a seed"} onPress={() => router.push("/seeds")} />
       </Card>
-      {pinned ? (
-        <Card tone="sage">
-          <Muted>{copy.pinnedLabels.campfire}</Muted>
-          <Subtitle>{pinned.title || copy.campfireWelcome}</Subtitle>
-          <TextLink label="Read it" onPress={() => router.push(`/campfire/${pinned.id}`)} />
-        </Card>
-      ) : null}
-      <Subtitle>Seeds you are growing</Subtitle>
-      {seeds.length === 0 ? <Muted>{copy.emptySeeds}</Muted> : null}
-      {seeds.map((seed) => (
-        <Card key={seed.id}>
-          <Body>{seed.title || seed.goal || "A seed"}</Body>
-          <Muted>{copy.seedStatus[seed.status] ?? seed.status}</Muted>
-        </Card>
-      ))}
-      <TextLink label="Browse seeds" onPress={() => router.push("/seeds")} />
-      <Subtitle>Where you are sitting</Subtitle>
-      {chairs.length === 0 ? <Muted>You have not taken a chair yet.</Muted> : null}
-      {chairs.map((chair) => {
-        const waypoint = shell.waypoints.find((item) => item.id === chair.waypointId);
-        return waypoint ? (
-          <TextLink key={chair.waypointId} label={waypoint.name} onPress={() => router.push(`/waypoints/${waypoint.slug}`)} />
-        ) : null;
-      })}
-      <Subtitle>Around the campfire</Subtitle>
-      {posts.map((post) => (
-        <Card key={post.id}>
-          <Body>{post.title || post.body.slice(0, 120)}</Body>
-          <Muted>{formatDay(post.createdAt)}</Muted>
-          <TextLink label="Open" onPress={() => router.push(`/campfire/${post.id}`)} />
-        </Card>
-      ))}
-      {suggestion ? (
+
+      <Card>
+        <Muted>Your waypoint</Muted>
+        {waypoint ? <Subtitle>{waypoint.name}</Subtitle> : <Body>You have not taken a chair yet.</Body>}
+        {waypoint ? <TextLink label="Return to this chair" onPress={() => router.push(`/waypoints/${waypoint.slug}`)} /> : null}
+      </Card>
+
+      <Card tone="clay">
+        <Muted>Around the fire</Muted>
+        {fire ? <Body>{fire.label}</Body> : <Body>The fire is quiet. You can sit without speaking.</Body>}
+        <TextLink label={fire ? fire.title : "Visit the campfire"} onPress={() => router.push(fire ? fire.href : "/campfire")} />
+      </Card>
+
+      {thought ? (
         <Card tone="mist">
-          <Muted>From the Reading Room</Muted>
-          <Subtitle>{suggestion.title}</Subtitle>
-          <Body>{suggestion.standfirst}</Body>
-          <TextLink label="Read" onPress={() => router.push(`/reading-room/${suggestion.slug}`)} />
+          <Muted>A thought for today</Muted>
+          <Subtitle>{thought.title}</Subtitle>
+          <Body>{thought.standfirst}</Body>
+          <TextLink label="Read" onPress={() => router.push(`/reading-room/${thought.slug}`)} />
         </Card>
       ) : null}
-      {requests.length ? (
-        <Card>
-          <Subtitle>Conversation requests</Subtitle>
-          <Body>{requests.length === 1 ? "Someone left an opening note." : `${requests.length} opening notes are waiting.`}</Body>
-          <TextLink label="Read them" onPress={() => router.push("/conversations")} />
-        </Card>
-      ) : null}
-      {sessions.map((session) => (
-        <SessionNote key={session.id} session={session} />
-      ))}
-      <TextLink label={unread ? `Notifications (${unread})` : "Notifications"} onPress={() => router.push("/notifications")} />
-      <TextLink label="Conversations" onPress={() => router.push("/conversations")} />
-      <TextLink label="Skill Swaps" onPress={() => router.push("/skill-swaps")} />
-      <TextLink label="SAME introductions" onPress={() => router.push("/same")} />
-      <TextLink label="Reading Room" onPress={() => router.push("/reading-room")} />
-      <TextLink label="Settings" onPress={() => router.push("/settings")} />
-      {user.role === "admin" ? <TextLink label="Steward" onPress={() => router.push("/steward")} /> : null}
+
+      <Card>
+        <Muted>Conversations</Muted>
+        {request ? <Body>An opening note is waiting.</Body> : note ? <Body>There is a new note in a conversation.</Body> : <Body>No new note.</Body>}
+        {request || note ? <TextLink label="Open conversations" onPress={() => router.push("/conversations")} /> : null}
+      </Card>
+
+      <Card tone="gold">
+        <Muted>Continue your journey</Muted>
+        <Body>{next.line}</Body>
+        <TextLink label={next.action} onPress={() => router.push(next.href)} />
+      </Card>
     </Screen>
   );
 }

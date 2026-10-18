@@ -6,12 +6,20 @@ export type ReadingCategory = {
   imageAlt?: string;
 };
 
+export type ReadingWaypoint = {
+  slug: string;
+  name: string;
+  discussions: number;
+};
+
 export type Reading = {
   slug: string;
   category: string;
   title: string;
   standfirst: string;
   paragraphs: string[];
+  featured?: boolean;
+  waypoints?: ReadingWaypoint[];
 };
 
 export const READING_CATEGORIES: ReadingCategory[] = [

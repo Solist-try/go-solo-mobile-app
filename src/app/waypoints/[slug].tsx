@@ -3,12 +3,6 @@ import { Body, Button, Card, Empty, Muted, Screen, TextLink, Title, TopBar } fro
 import { formatDay } from "@/domain/format";
 import { useCommunity } from "@/state/community";
 
-const READING: Record<string, string> = {
-  "independence-lab": "independent-living",
-  "solo-among-others": "connection",
-  "emotional-clarity": "starting-over",
-};
-
 export default function WaypointDetail() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { shell, user, joinWaypoint, leaveWaypoint, content, nameOf, readings } = useCommunity();
@@ -24,7 +18,7 @@ export default function WaypointDetail() {
   const sitting = shell.world.memberships.some((item) => item.userId === user?.id && item.waypointId === waypoint.id);
   const people = shell.world.memberships.filter((item) => item.waypointId === waypoint.id);
   const discussions = shell.world.campfire.filter((post) => post.waypointId === waypoint.id && !post.hidden);
-  const related = readings.filter((item) => item.category === (READING[waypoint.id] ?? "living-well")).slice(0, 3);
+  const related = readings.filter((item) => item.waypoints?.some((link) => link.slug === waypoint.slug));
 
   return (
     <Screen>
