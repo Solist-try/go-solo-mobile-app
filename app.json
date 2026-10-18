@@ -42,12 +42,6 @@
           "photosPermission": "Go Solo uses your photo library only when you choose a picture for a post, a story, or your garden.",
           "cameraPermission": "Go Solo uses the camera only when you choose to take a picture for a post, a story, or your garden."
         }
-      ],
-      [
-        "expo-notifications",
-        {
-          "color": "#1a1a1a"
-        }
       ]
     ],
     "experiments": {
