@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Go Solo",
+    "slug": "go-solo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "gosolo",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "community.gosolo.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Go Solo uses the camera only when you choose to take a picture for a post, a story, or your garden.",
+        "NSPhotoLibraryUsageDescription": "Go Solo uses your photo library only when you choose a picture for a post, a story, or your garden."
+      }
+    },
+    "android": {
+      "package": "community.gosolo.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#f7f5f2",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store",
+      "expo-splash-screen",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Go Solo uses your photo library only when you choose a picture for a post, a story, or your garden.",
+          "cameraPermission": "Go Solo uses the camera only when you choose to take a picture for a post, a story, or your garden."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1a1a1a"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "privacyPolicy": "See docs/PRIVACY.md. The app does not claim end-to-end encryption."
+    }
+  }
+}
