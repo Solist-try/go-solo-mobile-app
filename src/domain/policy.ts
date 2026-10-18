@@ -63,6 +63,17 @@ export function continuationIsNeutral(session: Pick<PrivateSession, "continuatio
   return yes < 2;
 }
 
+/** A session is a chosen window, not an open door. */
+export function parseSessionWindow(starts: string, ends: string, now = Date.now()) {
+  const start = new Date(starts.trim().replace(" ", "T"));
+  const end = new Date(ends.trim().replace(" ", "T"));
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  if (end.getTime() <= start.getTime()) return null;
+  if (start.getTime() < now - 5 * 60 * 1000) return null;
+  if (end.getTime() - start.getTime() > 24 * 60 * 60 * 1000) return null;
+  return { startsAt: start.toISOString(), endsAt: end.toISOString() };
+}
+
 export type PushKind = "message" | "request" | "seed" | "skill" | "same" | "reply" | "session" | "notice";
 
 export function pushCopy(kind: PushKind): { title: string; body: string } {

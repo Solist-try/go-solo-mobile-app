@@ -9,7 +9,7 @@ This describes the Go Solo mobile app as built. It is the note behind the in-app
 | Email, password, session | Sign in to the existing account | Supabase Auth. The device stores only the session in the Keychain or Keystore. | Yes | Until the member deletes the account or signs out. Sign-out revokes the refresh token. |
 | Profile, garden, seeds, posts, stories, skill swaps, SAME | The community itself | The same Postgres database as the website | Yes | Removed with the account where the row is owned by that profile. Partner rows may remain with the person cleared. Steward moderation notes are not automatically erased. |
 | Conversations and session times | Private contact the member chose | Same database, readable only by the two participants | Yes | Removed when the account is deleted, because those rows reference the profile. |
-| Photos | Avatar, optional post image | Supabase Storage, under a server-chosen path | Yes | Removed with the owning record when the account goes. |
+| Photos | Avatar, optional post image | Avatars use the public avatar bucket. Post photos use the private `member-media` bucket and a short-lived link. Conversation photos are not uploaded. | Yes | Removed with the owning record when the account goes. |
 | Push token | Deliver a generic note | `push_tokens`, only if the member allows notifications | Yes | Until sign-out deletion of the account, or the member removes the token. |
 | Drafts | Recover an unsent note | On the device only | Yes | Deleted when the member signs out. |
 | Last public copy | Keep the app understandable offline | On the device, without private messages | The cached garden is the member's own | Replaced on the next successful refresh. |

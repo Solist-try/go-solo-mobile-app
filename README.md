@@ -44,7 +44,7 @@ On the existing Supabase project, run the website migrations first, then:
 
 `supabase/migrations/0004_mobile_doorway.sql`
 
-That file adds communication preferences, blocks, reports, conversations, seed support, and private session agreements. It does not rewrite the website tables. Until it is applied, those rooms stay closed instead of pretending a write succeeded.
+That file adds communication preferences, blocks, reports, conversations, seed support, private session agreements, and a private `member-media` bucket for post photos. It does not rewrite the website tables. Until it is applied, those rooms stay closed instead of pretending a write succeeded. A photo that cannot be stored leaves the written draft on the device.
 
 ## Checks
 

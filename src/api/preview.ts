@@ -4,7 +4,7 @@ import { SEEDS, WAYPOINTS } from "@/domain/fallback-catalog";
 import { defaultContent } from "@/domain/content";
 import { contactBetween } from "@/domain/contact";
 import { createId } from "@/domain/format";
-import { pushAllowed, pushCopy, sameMessagingReady, seedAcceptsSupport } from "@/domain/policy";
+import { parseSessionWindow, pushAllowed, pushCopy, sameMessagingReady, seedAcceptsSupport } from "@/domain/policy";
 import {
   CHECK_IN_FREQUENCIES,
   SUPPORT_WITH,
@@ -368,8 +368,13 @@ export function createPreviewRepository(): Repository {
       if (!story) return fail("forbidden", "You can edit a story you wrote.");
       story.title = input.title.trim();
       story.whatDidYouDo = input.body.trim();
-      if (input.imageUrl !== undefined) story.imageUrl = input.imageUrl;
-      if (input.imageAlt !== undefined) story.imageAlt = input.imageAlt;
+      if (input.clearImage) {
+        story.imageUrl = undefined;
+        story.imageAlt = undefined;
+      } else if (input.imageUrl) {
+        story.imageUrl = input.imageUrl;
+        if (input.imageAlt !== undefined) story.imageAlt = input.imageAlt;
+      }
       return done();
     },
     async comment(targetType, targetId, body) {
@@ -691,6 +696,9 @@ export function createPreviewRepository(): Repository {
           return fail("forbidden", "Both people need to accept the introduction first.");
         }
       }
+      const window = parseSessionWindow(input.startsAt, input.endsAt);
+      if (!window) return fail("validation", "Choose a time that begins soon and ends within a day.");
+      input = { ...input, startsAt: window.startsAt, endsAt: window.endsAt };
       world.sessions.unshift({
         id: createId(),
         contextType: input.contextType,
@@ -728,19 +736,7 @@ export function createPreviewRepository(): Repository {
       if (row.memberA === gate.data.id) row.continuationA = agree;
       else if (row.memberB === gate.data.id) row.continuationB = agree;
       else return fail("forbidden", "This session is not yours.");
-      if (!agree) row.status = "completed";
-      if (row.continuationA === true && row.continuationB === true) {
-        world.sessions.unshift({
-          ...row,
-          id: createId(),
-          aAgreed: false,
-          bAgreed: false,
-          continuationA: null,
-          continuationB: null,
-          status: "proposed",
-          createdAt: new Date().toISOString(),
-        });
-      }
+      if (!agree || (row.continuationA === true && row.continuationB === true)) row.status = "completed";
       return done();
     },
     async registerPushToken() {

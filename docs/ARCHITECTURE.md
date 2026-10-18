@@ -12,7 +12,8 @@ The authoritative Go Solo community is the Next.js site and its Supabase Postgre
    - Sharing a waypoint is not a qualifying context.
    - Messages are visible only to the two participants. Stewards do not get a general inbox.
    - Message and report inserts are rate-limited in the database.
-   - Another private session is inserted only when both people agree.
+   - Another private session is opened only after both people say yes. The next time is a new suggestion, not a copy of the finished window.
+   - Optional campfire and story photos are stored in the private `member-media` bucket under a server-chosen name. The app shows them with a short-lived link. A device path cannot be saved as the image.
 
 ## Visibility
 

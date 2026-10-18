@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Body, Button, ErrorNote, Field, Muted, Screen, TextLink, Title, TopBar } from "@/components/ui";
+import { QuietPhoto } from "@/components/photo";
 import { RichText } from "@/components/rich-text";
 import { ReportBox } from "@/components/report-box";
 import { formatDay } from "@/domain/format";
@@ -32,6 +33,7 @@ export default function StoryDetail() {
         {community.nameOf(story.authorId)} · {formatDay(story.createdAt)}
       </Muted>
       <RichText value={story.whatDidYouDo} />
+      <QuietPhoto uri={story.imageUrl} alt={story.imageAlt} />
       {legacy.length ? (
         <>
           <Muted>An earlier story kept its questions.</Muted>

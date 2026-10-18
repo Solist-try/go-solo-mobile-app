@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SessionOffer } from "@/components/session-time";
 import { Body, Button, Card, ErrorNote, Field, Screen, Title, TopBar } from "@/components/ui";
 import { useCommunity } from "@/state/community";
 
@@ -56,6 +57,14 @@ export default function SkillSwaps() {
             <Button label="Decline" tone="quiet" onPress={() => void community.setSwapStatus(item.id, "declined")} />
             <Button label="Pause" tone="quiet" onPress={() => void community.setSwapStatus(item.id, "paused")} />
             <Button label="Complete" tone="quiet" onPress={() => void community.setSwapStatus(item.id, "completed")} />
+            {item.status === "accepted" && user ? (
+              <SessionOffer
+                enabled={shell.capabilities.sessions}
+                contextType="skill-swap"
+                contextId={item.id}
+                memberId={item.fromUserId === user.id ? item.toUserId : item.fromUserId}
+              />
+            ) : null}
           </Card>
         ))}
       <ErrorNote>{error}</ErrorNote>

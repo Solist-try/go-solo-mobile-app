@@ -304,12 +304,9 @@ begin
   end if;
 
   if row.continuation_a is true and row.continuation_b is true and row.continuation_opened is false then
-    insert into public.session_requests (
-      context_type, context_id, member_a, member_b, starts_at, ends_at, status
-    ) values (
-      row.context_type, row.context_id, row.member_a, row.member_b, row.starts_at, row.ends_at, 'proposed'
-    );
-    update public.session_requests set continuation_opened = true, status = 'completed' where id = row.id;
+    update public.session_requests
+    set continuation_opened = true, status = 'completed'
+    where id = row.id;
   end if;
 end;
 $$;
@@ -428,3 +425,74 @@ revoke all on function public.answer_session_continuation(uuid, boolean) from pu
 grant execute on function public.can_contact(uuid) to authenticated;
 grant execute on function public.agree_session(uuid) to authenticated;
 grant execute on function public.answer_session_continuation(uuid, boolean) to authenticated;
+
+create or replace function public.guard_session_window()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.ends_at <= new.starts_at or new.ends_at > new.starts_at + interval '24 hours' then
+    raise exception 'invalid session window';
+  end if;
+  if tg_op = 'INSERT' and new.starts_at < now() - interval '5 minutes' then
+    raise exception 'invalid session window';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_session_window on public.session_requests;
+create trigger guard_session_window
+  before insert or update on public.session_requests
+  for each row execute function public.guard_session_window();
+
+create or replace function public.reject_local_media()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.image_url is null or new.image_url = '' then
+    return new;
+  end if;
+  if new.image_url ~* '^(file:|content:|blob:|data:|/)' then
+    raise exception 'media must be stored by the server';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists reject_local_campfire_media on public.campfire_posts;
+create trigger reject_local_campfire_media
+  before insert or update on public.campfire_posts
+  for each row execute function public.reject_local_media();
+
+drop trigger if exists reject_local_story_media on public.out_there_posts;
+create trigger reject_local_story_media
+  before insert or update on public.out_there_posts
+  for each row execute function public.reject_local_media();
+
+drop trigger if exists reject_local_message_media on public.conversation_messages;
+create trigger reject_local_message_media
+  before insert or update on public.conversation_messages
+  for each row execute function public.reject_local_media();
+
+insert into storage.buckets (id, name, public)
+values ('member-media', 'member-media', false)
+on conflict (id) do nothing;
+
+do $$ begin
+  create policy "members read member media" on storage.objects
+    for select to authenticated
+    using (bucket_id = 'member-media');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create policy "members upload their media" on storage.objects
+    for insert to authenticated
+    with check (
+      bucket_id = 'member-media'
+      and auth.uid()::text = (storage.foldername(name))[1]
+    );
+exception when duplicate_object then null;
+end $$;

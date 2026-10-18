@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { SEEDS, WAYPOINTS } from "@/domain/fallback-catalog";
 import { CONTENT_CACHE_KEY, defaultContent, mergeContent } from "@/domain/content";
 import { createId } from "@/domain/format";
-import { redactError } from "@/domain/policy";
+import { parseSessionWindow, redactError } from "@/domain/policy";
 import {
   CHECK_IN_FREQUENCIES,
   SUPPORT_WITH,
@@ -35,6 +35,74 @@ import {
 } from "./contract";
 
 type Row = Record<string, unknown>;
+
+function isRemoteMedia(value: string) {
+  return value.startsWith("https://") || value.startsWith("http://");
+}
+
+function sniffImage(bytes: ArrayBuffer) {
+  const view = new Uint8Array(bytes.slice(0, 16));
+  if (view.length >= 3 && view[0] === 0xff && view[1] === 0xd8 && view[2] === 0xff) return { mime: "image/jpeg", ext: "jpg" };
+  if (view.length >= 8 && view[0] === 0x89 && view[1] === 0x50 && view[2] === 0x4e && view[3] === 0x47) return { mime: "image/png", ext: "png" };
+  if (
+    view.length >= 12 &&
+    view[0] === 0x52 &&
+    view[1] === 0x49 &&
+    view[2] === 0x46 &&
+    view[3] === 0x46 &&
+    view[8] === 0x57 &&
+    view[9] === 0x45 &&
+    view[10] === 0x42 &&
+    view[11] === 0x50
+  ) {
+    return { mime: "image/webp", ext: "webp" };
+  }
+  if (view.length >= 12 && view[4] === 0x66 && view[5] === 0x74 && view[6] === 0x79 && view[7] === 0x70) {
+    const brand = String.fromCharCode(view[8], view[9], view[10], view[11]);
+    if (brand === "heic" || brand === "heix" || brand === "mif1" || brand === "msf1") return { mime: "image/heic", ext: "heic" };
+  }
+  return null;
+}
+
+async function storedPhoto(db: SupabaseClient, userId: string, uri?: string, _mime?: string) {
+  if (!uri) return { path: null as string | null };
+  if (isRemoteMedia(uri)) return { path: uri };
+  let bytes: ArrayBuffer;
+  try {
+    const response = await fetch(uri);
+    bytes = await response.arrayBuffer();
+  } catch {
+    return { error: "The photo could not be read. Your words are still here." };
+  }
+  if (bytes.byteLength > 8 * 1024 * 1024) return { error: "That photo is too large. Your words are still here." };
+  const kind = sniffImage(bytes);
+  if (!kind) return { error: "That file is not a photo this room can keep. Your words are still here." };
+  const path = `${userId}/${createId()}.${kind.ext}`;
+  const uploaded = await db.storage.from("member-media").upload(path, bytes, { contentType: kind.mime, upsert: false });
+  if (uploaded.error) return { error: "The photo could not be saved. Your words are still here." };
+  return { path };
+}
+
+async function attachSignedMedia(db: SupabaseClient, world: World) {
+  const paths = new Set<string>();
+  for (const post of [...world.campfire, ...world.stories]) {
+    if (post.imageUrl && !isRemoteMedia(post.imageUrl)) paths.add(post.imageUrl);
+  }
+  const signed = new Map<string, string>();
+  await Promise.all(
+    [...paths].map(async (path) => {
+      const result = await db.storage.from("member-media").createSignedUrl(path, 60 * 60);
+      if (result.data?.signedUrl) signed.set(path, result.data.signedUrl);
+    }),
+  );
+  for (const post of [...world.campfire, ...world.stories]) {
+    if (!post.imageUrl || isRemoteMedia(post.imageUrl)) continue;
+    post.imageUrl = signed.get(post.imageUrl);
+  }
+  for (const message of world.messages) {
+    if (message.imageUrl && !isRemoteMedia(message.imageUrl)) message.imageUrl = undefined;
+  }
+}
 
 function configured() {
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
@@ -454,6 +522,7 @@ async function loadShell(db: SupabaseClient, userId: string | null): Promise<She
     targetType: asString(row.target_type) as World["dismissedPins"][number]["targetType"],
     targetId: asString(row.target_id),
   }));
+  await attachSignedMedia(db, world);
 
   const profile = world.profiles.find((item) => item.id === userId) ?? null;
   return { profile, content, ...catalog, world, capabilities };
@@ -754,6 +823,8 @@ export function createLiveRepository(): Repository {
     async publishCampfire(input: CampfireInput) {
       const { data } = await db.auth.getUser();
       if (!data.user) return fail("unauthorized", "Sign in to continue.");
+      const image = await storedPhoto(db, data.user.id, input.imageUrl, input.imageMime);
+      if ("error" in image) return fail("validation", image.error ?? "The photo could not be saved. Your words are still here.");
       const { error } = await db.from("campfire_posts").insert({
         author_id: data.user.id,
         user_id: data.user.id,
@@ -763,14 +834,16 @@ export function createLiveRepository(): Repository {
         body: input.body.trim(),
         content: input.body.trim(),
         waypoint_id: input.waypointId ?? null,
-        image_url: input.imageUrl ?? null,
-        image_alt: input.imageAlt ?? null,
+        image_url: image.path,
+        image_alt: image.path ? input.imageAlt ?? null : null,
       });
       return mutate(db, error);
     },
     async publishStory(input: StoryInput) {
       const { data } = await db.auth.getUser();
       if (!data.user) return fail("unauthorized", "Sign in to continue.");
+      const image = await storedPhoto(db, data.user.id, input.imageUrl, input.imageMime);
+      if ("error" in image) return fail("validation", image.error ?? "The photo could not be saved. Your words are still here.");
       const { error } = await db.from("out_there_posts").insert({
         author_id: data.user.id,
         user_id: data.user.id,
@@ -780,25 +853,31 @@ export function createLiveRepository(): Repository {
         expecting: "",
         actually_happened: "",
         would_do_again: "yes",
-        image_url: input.imageUrl ?? null,
-        image_alt: input.imageAlt ?? null,
+        image_url: image.path,
+        image_alt: image.path ? input.imageAlt ?? null : null,
       });
       return mutate(db, error);
     },
     async updateStory(id, input) {
       const { data } = await db.auth.getUser();
       if (!data.user) return fail("unauthorized", "Sign in to continue.");
-      const { error } = await db
-        .from("out_there_posts")
-        .update({
-          title: input.title.trim(),
-          what_did_you_do: input.body.trim(),
-          what_i_did: input.body.trim(),
-          image_url: input.imageUrl ?? null,
-          image_alt: input.imageAlt ?? null,
-        })
-        .eq("id", id)
-        .eq("author_id", data.user.id);
+      const patch: Row = {
+        title: input.title.trim(),
+        what_did_you_do: input.body.trim(),
+        what_i_did: input.body.trim(),
+      };
+      if (input.clearImage) {
+        patch.image_url = null;
+        patch.image_alt = null;
+      } else if (input.imageUrl && !isRemoteMedia(input.imageUrl)) {
+        const image = await storedPhoto(db, data.user.id, input.imageUrl, input.imageMime);
+        if ("error" in image) return fail("validation", image.error ?? "The photo could not be saved. Your words are still here.");
+        patch.image_url = image.path;
+        patch.image_alt = input.imageAlt ?? null;
+      } else if (input.imageAlt !== undefined) {
+        patch.image_alt = input.imageAlt;
+      }
+      const { error } = await db.from("out_there_posts").update(patch).eq("id", id).eq("author_id", data.user.id);
       return mutate(db, error);
     },
     async comment(targetType, targetId, body) {
@@ -1004,13 +1083,15 @@ export function createLiveRepository(): Repository {
     async proposeSession(input) {
       const { data } = await db.auth.getUser();
       if (!data.user) return fail("unauthorized", "Sign in to continue.");
+      const window = parseSessionWindow(input.startsAt, input.endsAt);
+      if (!window) return fail("validation", "Choose a time that begins soon and ends within a day.");
       const { error } = await db.from("session_requests").insert({
         context_type: input.contextType,
         context_id: input.contextId,
         member_a: data.user.id,
         member_b: input.memberId,
-        starts_at: input.startsAt,
-        ends_at: input.endsAt,
+        starts_at: window.startsAt,
+        ends_at: window.endsAt,
         a_agreed: true,
         b_agreed: false,
         status: "proposed",

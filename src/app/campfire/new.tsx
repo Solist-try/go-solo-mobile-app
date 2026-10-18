@@ -1,18 +1,22 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Image } from "react-native";
 import { Body, Button, Choice, ErrorNote, Field, Muted, Screen, Title, TopBar } from "@/components/ui";
 import { pickPhoto } from "@/components/media";
+import { QuietPhoto } from "@/components/photo";
 import { CAMPFIRE_KINDS, CAMPFIRE_SECTIONS } from "@/domain/types";
 import { useCommunity } from "@/state/community";
 
 export default function NewCampfire() {
-  const { publishCampfire, draft, saveDraft, clearDraft, content } = useCommunity();
+  const { waypoint } = useLocalSearchParams<{ waypoint?: string }>();
+  const waypointId = typeof waypoint === "string" ? waypoint : undefined;
+  const { publishCampfire, draft, saveDraft, clearDraft, content, shell } = useCommunity();
+  const chair = shell.waypoints.find((item) => item.id === waypointId);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState(draft("campfire"));
   const [section, setSection] = useState<(typeof CAMPFIRE_SECTIONS)[number]["id"]>("general");
   const [kind, setKind] = useState<(typeof CAMPFIRE_KINDS)[number]["id"]>("thought");
   const [imageUri, setImageUri] = useState("");
+  const [imageMime, setImageMime] = useState("");
   const [alt, setAlt] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -20,7 +24,16 @@ export default function NewCampfire() {
   async function submit() {
     setPending(true);
     await saveDraft("campfire", body);
-    const message = await publishCampfire({ section, kind, title, body, imageUrl: imageUri || undefined, imageAlt: alt || undefined });
+    const message = await publishCampfire({
+      section,
+      kind,
+      title,
+      body,
+      waypointId,
+      imageUrl: imageUri || undefined,
+      imageMime: imageMime || undefined,
+      imageAlt: alt || undefined,
+    });
     setPending(false);
     if (message) {
       setError(message);
@@ -34,6 +47,7 @@ export default function NewCampfire() {
     <Screen>
       <TopBar back title={content.mobile!.shareIt} />
       <Title>{content.mobile!.pullUpAChair}</Title>
+      {chair ? <Muted>This discussion sits in {chair.name}.</Muted> : null}
       <Body>Bold, italic, a list, a quote, or a plain link are enough. Photos stay small.</Body>
       <Muted>Use **bold**, *italic*, a line starting with -, or a line starting with 1.</Muted>
       {CAMPFIRE_SECTIONS.map((item) => (
@@ -44,13 +58,15 @@ export default function NewCampfire() {
       ))}
       <Field label="Title" value={title} onChangeText={setTitle} />
       <Field label="What do you want to say?" value={body} onChangeText={setBody} multiline />
-      {imageUri ? <Image source={{ uri: imageUri }} style={{ width: 160, height: 120, borderRadius: 16 }} accessibilityLabel={alt || "Chosen photo"} /> : null}
+      <QuietPhoto uri={imageUri} alt={alt} />
       <Button
         label="Choose a photo"
         tone="quiet"
         onPress={async () => {
           const asset = await pickPhoto();
-          if (asset) setImageUri(asset.uri);
+          if (!asset) return;
+          setImageUri(asset.uri);
+          setImageMime(asset.mimeType ?? "image/jpeg");
         }}
       />
       {imageUri ? <Field label="Alt text" value={alt} onChangeText={setAlt} /> : null}
@@ -60,6 +76,7 @@ export default function NewCampfire() {
           tone="quiet"
           onPress={() => {
             setImageUri("");
+            setImageMime("");
             setAlt("");
           }}
         />

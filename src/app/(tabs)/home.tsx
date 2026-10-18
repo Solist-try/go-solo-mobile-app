@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { SessionNote } from "@/components/session-time";
 import { Banner, Body, Card, Muted, Screen, Subtitle, TextLink, Title } from "@/components/ui";
 import { formatDay } from "@/domain/format";
 import { useCommunity } from "@/state/community";
@@ -12,9 +13,7 @@ export default function Home() {
   const chairs = world.memberships.filter((item) => item.userId === user.id);
   const posts = world.campfire.filter((item) => !item.hidden).slice(0, 3);
   const requests = world.conversations.filter((item) => item.recipientId === user.id && item.status === "request");
-  const sessions = world.sessions.filter(
-    (item) => item.status === "scheduled" && (item.memberA === user.id || item.memberB === user.id),
-  );
+  const sessions = world.sessions.filter((item) => item.memberA === user.id || item.memberB === user.id);
   const preferredReading: Record<string, string> = {
     "starting-over": "starting-again-in-midlife",
     "independent-living": "building-routines-that-stick",
@@ -89,10 +88,7 @@ export default function Home() {
         </Card>
       ) : null}
       {sessions.map((session) => (
-        <Card key={session.id} tone="clay">
-          <Muted>A session you both accepted</Muted>
-          <Body>{formatDay(session.startsAt)}</Body>
-        </Card>
+        <SessionNote key={session.id} session={session} />
       ))}
       <TextLink label={unread ? `Notifications (${unread})` : "Notifications"} onPress={() => router.push("/notifications")} />
       <TextLink label="Conversations" onPress={() => router.push("/conversations")} />

@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Body, Button, Card, ErrorNote, Field, Muted, Screen, TextLink, Title, TopBar } from "@/components/ui";
+import { QuietPhoto } from "@/components/photo";
 import { RichText } from "@/components/rich-text";
 import { REACTIONS } from "@/domain/types";
 import { formatDay } from "@/domain/format";
@@ -33,6 +34,7 @@ export default function CampfireDetail() {
         {community.nameOf(post.authorId)} · {formatDay(post.createdAt)}
       </Muted>
       <RichText value={post.body} />
+      <QuietPhoto uri={post.imageUrl} alt={post.imageAlt} />
       {post.imageAlt ? <Muted>Photo: {post.imageAlt}</Muted> : null}
       <Body>A named response, not a count.</Body>
       {REACTIONS.map((reaction) => (

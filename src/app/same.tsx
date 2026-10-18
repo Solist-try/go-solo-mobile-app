@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SessionOffer } from "@/components/session-time";
 import { Body, Button, Card, ErrorNote, Field, Muted, Screen, Title, TopBar } from "@/components/ui";
 import { sameMessagingReady } from "@/domain/policy";
 import { useCommunity } from "@/state/community";
@@ -39,6 +40,14 @@ export default function Same() {
               </>
             ) : null}
             {ready && other ? <Muted>You can start a conversation from their garden. A closed introduction is not a failure.</Muted> : null}
+            {ready && other ? (
+              <SessionOffer
+                enabled={community.shell.capabilities.sessions}
+                contextType="same"
+                contextId={item.id}
+                memberId={other}
+              />
+            ) : null}
             {!ready && item.partnerId ? <Muted>Neither person can message through this introduction until both have accepted.</Muted> : null}
           </Card>
         );

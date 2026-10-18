@@ -7,6 +7,7 @@ import {
   pushCopy,
   redactError,
   sameMessagingReady,
+  parseSessionWindow,
   seedAcceptsSupport,
 } from "./policy.ts";
 
@@ -99,6 +100,14 @@ test("push text does not carry a message body or a seed title", () => {
   assert.equal(copy.body.includes("password"), false);
   assert.equal(JSON.stringify(pushCopy("seed")).toLowerCase().includes("seed title"), false);
   assert.equal(pushCopy("message").body.length < 80, true);
+});
+
+test("a session window has to be chosen, and it has to end", () => {
+  const now = Date.parse("2026-10-18T12:00:00Z");
+  const ok = parseSessionWindow("2026-10-18 15:00", "2026-10-18 16:00", now);
+  assert.ok(ok);
+  assert.equal(parseSessionWindow("2026-10-18 10:00", "2026-10-18 11:00", now), null);
+  assert.equal(parseSessionWindow("2026-10-18 15:00", "2026-10-20 15:00", now), null);
 });
 
 test("database failures stay private", () => {

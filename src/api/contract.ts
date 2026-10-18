@@ -45,7 +45,9 @@ export type StoryInput = {
   title: string;
   body: string;
   imageUrl?: string;
+  imageMime?: string;
   imageAlt?: string;
+  clearImage?: boolean;
   clientKey?: string;
 };
 
@@ -56,6 +58,7 @@ export type CampfireInput = {
   body: string;
   waypointId?: string;
   imageUrl?: string;
+  imageMime?: string;
   imageAlt?: string;
   clientKey?: string;
 };
