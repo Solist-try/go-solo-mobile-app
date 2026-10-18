@@ -229,7 +229,7 @@ export function TextLink({ label, onPress }: { label: string; onPress: () => voi
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: 48 },
+  scroll: { paddingBottom: 120 },
   column: { width: "100%", maxWidth: 680, alignSelf: "center", paddingHorizontal: 24, paddingTop: 12, gap: 16 },
   center: { alignItems: "center", justifyContent: "center" },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 44 },

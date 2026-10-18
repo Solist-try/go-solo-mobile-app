@@ -15,7 +15,17 @@ export default function Home() {
   const sessions = world.sessions.filter(
     (item) => item.status === "scheduled" && (item.memberA === user.id || item.memberB === user.id),
   );
-  const suggestion = readings.find((item) => item.category === readingSuggestion);
+  const preferredReading: Record<string, string> = {
+    "starting-over": "starting-again-in-midlife",
+    "independent-living": "building-routines-that-stick",
+    connection: "how-adults-make-friends",
+    "out-there": "exploring-your-own-city",
+    reflections: "permission-to-begin",
+    "living-well": "creating-a-weekly-reset",
+  };
+  const suggestion =
+    readings.find((item) => item.slug === preferredReading[readingSuggestion]) ??
+    readings.find((item) => item.category === readingSuggestion);
   const dismissed = new Set(world.dismissedPins.filter((item) => item.userId === user.id).map((item) => item.targetId));
   const pinned = world.campfire.find((item) => item.pinned && !item.hidden && !dismissed.has(item.id));
 

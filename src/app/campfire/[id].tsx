@@ -75,7 +75,10 @@ export default function CampfireDetail() {
           <TextLink label="Block this member" onPress={() => void community.block(post.authorId)} />
         </>
       ) : null}
-      <TextLink label="Their garden" onPress={() => router.push(`/garden/${post.authorId}`)} />
+      <TextLink
+        label={community.user?.id === post.authorId ? "My garden" : "Their garden"}
+        onPress={() => router.push(`/garden/${post.authorId}`)}
+      />
     </Screen>
   );
 }
