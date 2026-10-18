@@ -35,9 +35,9 @@ type CommunityValue = {
   signUp: (email: string, password: string, displayName: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<string | null>;
-  updatePassword: (password: string) => Promise<string | null>;
+  updatePassword: (current: string, next: string) => Promise<string | null>;
   resendVerification: () => Promise<string | null>;
-  deleteAccount: () => Promise<string | null>;
+  deleteAccount: (confirm: string) => Promise<string | null>;
   updateProfile: (patch: Partial<Profile>) => Promise<string | null>;
   setInterests: (ids: string[]) => Promise<string | null>;
   uploadAvatar: (uri: string, mime: string) => Promise<string | null>;
@@ -165,7 +165,7 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
       user,
       content: shell.content,
       shell,
-      readings: READINGS,
+      readings: shell.readings?.length ? shell.readings : READINGS,
       refresh: async () => {
         await apply(await repo().refresh());
       },
@@ -182,16 +182,16 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
         const result = await repo().requestPasswordReset(email);
         return result.ok ? null : result.error.message;
       },
-      updatePassword: async (password) => {
-        const result = await repo().updatePassword(password);
+      updatePassword: async (current, next) => {
+        const result = await repo().updatePassword(current, next);
         return result.ok ? null : result.error.message;
       },
       resendVerification: async () => {
         const result = await repo().resendVerification();
         return result.ok ? null : result.error.message;
       },
-      deleteAccount: async () => {
-        const result = await repo().deleteAccount();
+      deleteAccount: async (confirm) => {
+        const result = await repo().deleteAccount(confirm);
         if (!result.ok) return result.error.message;
         const restored = await repo().restore();
         if (restored.ok) setShell(restored.data);

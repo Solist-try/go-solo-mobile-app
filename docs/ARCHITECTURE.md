@@ -1,31 +1,26 @@
 # Architecture
 
-The authoritative Go Solo community is the Next.js site and its Supabase Postgres database. Historical WordPress files are not the current system, and there is no PHP codebase to extend.
+The live Go Solo community is the PHP site and its MySQL database. The phone talks to that site over HTTPS. It does not run PHP, and it does not open a database connection.
 
 ## Request path
 
-1. The member signs in with Supabase Auth. Access tokens are short-lived. Refresh tokens are rotated by the Auth server and can be revoked with a global sign-out.
-2. Reads and writes go through PostgREST over HTTPS. The app uses the anon key only.
-3. Row-level security applies the same ownership rules as the website: a member updates their own profile, plants their own seeds, and cannot appoint a SAME partner. A steward match remains a steward action because of the existing database trigger.
-4. New mobile tables, when migration `0004` is applied, add server checks the website did not need yet:
-   - `can_contact` refuses a private conversation when either person has blocked the other, when the recipient is taking space, when they have chosen no private conversations at this time, or when contextual contact has no qualifying context.
-   - Sharing a waypoint is not a qualifying context.
-   - Messages are visible only to the two participants. Stewards do not get a general inbox.
-   - Message and report inserts are rate-limited in the database.
-   - Another private session is opened only after both people say yes. The next time is a new suggestion, not a copy of the finished window.
-   - Optional campfire and story photos are stored in the private `member-media` bucket under a server-chosen name. The app shows them with a short-lived link. A device path cannot be saved as the image.
+1. `POST /api/v1/session` checks the existing member email and password. The reply is a 15-minute access token and a 30-day refresh token. Only their SHA-256 hashes are stored, in `api_tokens`.
+2. Later requests send `Authorization: Bearer` and the same value in `X-Go-Solo-Authorization`, because some shared hosts drop the Authorization header. The website session cookie is ignored.
+3. `POST /api/v1/session/refresh` rotates the pair. Reusing a revoked refresh token revokes the whole family.
+4. The API loads the same PHP functions the website uses for contact, blocks, chairs, and steward checks. A private conversation is allowed only when that code says the two members may talk. Sitting in the same waypoint is not enough.
+5. Campfire posts and waypoint discussions have separate numeric ids, so the API prefixes them `c-` and `w-`.
+6. Photos chosen on the phone are refused. The website upload remains the place a picture is stored. A device path is never written into MySQL.
+7. Named reactions and phone push tokens are not stored. There is no table for them.
 
 ## Visibility
 
 Public, including while signed out: steward-managed homepage copy, the seed catalog, waypoint descriptions, and the Reading Room.
 
-Member-only, because that is what the current policies allow: profiles, campfire, Out There, comments, gardens, skill swaps, SAME, notifications, and conversations.
-
-The app strips other members' email addresses before they reach the screen. The current website policy still returns that column to any signed-in member. Tightening that without breaking the website's `select *` needs a follow-up on the web client.
+Member-only: profiles, campfire, Out There, comments, gardens, skill swaps, SAME, notices, and conversations. Other members' email addresses are left off the payload.
 
 ## Copy
 
-`site_content` id `site` is the same document the website edits. The app merges it over emergency fallbacks and caches the last good document on the device. Display labels do not change permission checks or status codes.
+The API returns the steward-edited lines it can read from the website settings. The app merges those over the emergency copy and keeps the last good public copy on the device. Display labels do not change permission checks or status codes.
 
 ## What the app does not do
 
@@ -33,5 +28,5 @@ The app strips other members' email addresses before they reach the screen. The 
 - No direct SQL connection.
 - No WebView of the website.
 - No claim of end-to-end encryption.
-- No popularity ranking, reaction totals, read receipts, or last-seen.
-- No custom video service. A session, when enabled, is a time both people agreed to. They choose how to meet.
+- No popularity ranking, reaction totals, read receipts, or last-seen on screen.
+- No separate session calendar. A temporary chair is the conversation's existing expiry, and both people keep it from that conversation.

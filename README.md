@@ -6,27 +6,31 @@ Go Solo, Not Alone.
 
 ## What this is
 
-The current website (`Solist-try/Go-solo-web`) is a Next.js application on Supabase Auth, Postgres, and Storage. There is no PHP application in the organization. This app does not replace that backend and does not open a second database.
+The live website is the PHP application at [gosolo.co.network](https://gosolo.co.network). Members, writing, waypoints, and conversations already live in its MySQL database. This app is another door into that house. It does not open a second database, and the phone never connects to MySQL.
 
 ```
 iOS app
         \
-         HTTPS  ·  Supabase Auth + PostgREST + Storage
-        /         (the same project and row-level security as the website)
+         HTTPS JSON  ·  /api/v1 on the existing PHP site
+        /              (the same accounts, roles, and contact rules)
 Android app
 ```
 
-The phone never receives database passwords. The publishable anon key identifies the project. Postgres row-level security, the SAME guard, and the policies in `supabase/migrations/0004_mobile_doorway.sql` decide what a member can read or write.
+Sign-in uses the existing member account. The API returns a short-lived access token and a rotating refresh token. The app keeps those in the iOS Keychain or Android Keystore (session storage on the web preview, cleared when the tab closes). The website's `gosolo` session cookie is not the mobile credential.
 
-Sign-in uses the existing member account: a short-lived access token and a refresh token, kept in the iOS Keychain or Android Keystore (session storage on the web preview, cleared when the tab closes). Signing out revokes the refresh token on the server.
-
-Without `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`, the app runs a clearly labeled on-device preview so the rooms can be walked. That preview is not the community.
+Without `EXPO_PUBLIC_API_URL`, the app runs a clearly labeled on-device preview so the rooms can be walked. That preview is not the community. Leave the address blank until the PHP files below are uploaded. The live site does not serve `/api/v1` until then.
 
 ## Shared rooms
 
-Home, Campfire, Waypoints, Out There, My Garden, Seeds, Reading Room, Skill Swap, SAME introductions, Conversations, notifications, and a small steward desk. Words come from the website `site_content` row when it is available, with the same emergency copy the website ships.
+Home, Campfire, Waypoints, Out There, My Garden, Seeds, Reading Room, Skill Swap, SAME introductions, Conversations, notifications, and a small steward desk. Public words come from the website's steward copy, with the same emergency sentences the app ships.
 
 Seed status codes stay `active`, `resting`, and `completed`. The screen may say Growing, On Hold, and Grown.
+
+## Put the doorway on the website
+
+The upload notes are in [host/README.md](host/README.md). In short: paste `host/sql/update-api.sql` in phpMyAdmin, then replace `public_html/app/api.php` and `public_html/app/bootstrap.php` with the copies in `host/app/`. Leave `config.php` where it is.
+
+`supabase/migrations/0004_mobile_doorway.sql` is not the live database. Do not run it against the PHP site.
 
 ## Run
 
@@ -37,14 +41,6 @@ npm run web
 ```
 
 `npm run ios` needs macOS. `npm run android` needs an emulator or device. Store binaries are built with EAS (`eas.json`), not by committing `ios/` or `android/`.
-
-## Database
-
-On the existing Supabase project, run the website migrations first, then:
-
-`supabase/migrations/0004_mobile_doorway.sql`
-
-That file adds communication preferences, blocks, reports, conversations, seed support, private session agreements, and a private `member-media` bucket for post photos. It does not rewrite the website tables. Until it is applied, those rooms stay closed instead of pretending a write succeeded. A photo that cannot be stored leaves the written draft on the device.
 
 ## Checks
 

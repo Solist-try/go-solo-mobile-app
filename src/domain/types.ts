@@ -117,7 +117,7 @@ export type ContactContext =
 export type LifeSeed = {
   id: string;
   name: string;
-  status: "active" | "resting";
+  status: "active" | "resting" | "completed";
   since: string;
   lookingForSupport: boolean;
 };

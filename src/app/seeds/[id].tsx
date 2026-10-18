@@ -57,7 +57,7 @@ export default function SeedDetail() {
           ))}
         </>
       ) : (
-        <Muted>Offering support is saved once the shared database update is applied.</Muted>
+        <Muted>Offering support opens once conversations are on this house.</Muted>
       )}
     </Screen>
   );

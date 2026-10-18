@@ -13,7 +13,7 @@ export default function Welcome() {
     <Screen>
       {offline ? <Banner>You are offline. Public words already on this device are still here.</Banner> : null}
       {mode === "preview" ? (
-        <Banner>Preview on this device. Add the Supabase address to enter the same community as the website.</Banner>
+        <Banner>Preview on this device. Add the house address to enter the same community as the website.</Banner>
       ) : null}
       <Muted>{content.heroTagline}</Muted>
       <Title>{content.heroTitle}</Title>

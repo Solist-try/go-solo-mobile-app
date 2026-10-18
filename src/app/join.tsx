@@ -29,7 +29,7 @@ export default function Join() {
       <TopBar back title="Join" />
       <Title>Join Go Solo.</Title>
       <Body>One account, shared with the website. You do not need a separate mobile membership.</Body>
-      {mode === "preview" ? <Body>This preview keeps the account on this device until Supabase is connected.</Body> : null}
+      {mode === "preview" ? <Body>This preview keeps the account on this device until the house address is set.</Body> : null}
       <Field label="Name" value={name} onChangeText={setName} />
       <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
       <Field label="Password" value={password} onChangeText={setPassword} secure />

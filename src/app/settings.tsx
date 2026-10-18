@@ -1,6 +1,4 @@
 import { useState } from "react";
-import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
 import { Body, Button, Choice, ErrorNote, Muted, Screen, Title, TopBar } from "@/components/ui";
 import { useCommunity } from "@/state/community";
 
@@ -27,24 +25,7 @@ export default function Settings() {
       <Button label={user.notifyReplies ? "Replies are on" : "Replies are off"} tone="quiet" onPress={() => void community.updateProfile({ notifyReplies: !user.notifyReplies })} />
       <Button label={user.notifyWaypoints ? "Waypoint notes are on" : "Waypoint notes are off"} tone="quiet" onPress={() => void community.updateProfile({ notifyWaypoints: !user.notifyWaypoints })} />
       <Button label={user.notifyCheckins ? "Check-in notes are on" : "Check-in notes are off"} tone="quiet" onPress={() => void community.updateProfile({ notifyCheckins: !user.notifyCheckins })} />
-      <Button
-        label="Allow push notes"
-        tone="quiet"
-        onPress={async () => {
-          const permission = await Notifications.requestPermissionsAsync();
-          if (!permission.granted) {
-            setError("Notifications stay off until you allow them.");
-            return;
-          }
-          const token = await Notifications.getExpoPushTokenAsync().catch(() => null);
-          if (!token) {
-            setError("This device did not return a push token. In-app notes still work.");
-            return;
-          }
-          setError((await community.registerPushToken(token.data, Platform.OS)) ?? "");
-        }}
-      />
-      <Muted>Push notes never include a private message or the name of a seed.</Muted>
+      <Muted>Phone notifications are not on this house yet. In-app notes still work, and they stay short.</Muted>
       <Title>People you have blocked</Title>
       {community.shell.world.blocks.filter((block) => block.blockerId === user.id).map((block) => (
         <Button key={block.id} label={`Unblock ${community.nameOf(block.blockedId)}`} tone="quiet" onPress={() => void community.unblock(block.blockedId)} />

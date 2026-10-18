@@ -7,7 +7,7 @@ export default function ReadingDetail() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { readings } = useCommunity();
   const reading = readings.find((item) => item.slug === slug);
-  const site = process.env.EXPO_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  const site = (process.env.EXPO_PUBLIC_SITE_URL || process.env.EXPO_PUBLIC_API_URL || "").replace(/\/$/, "");
   if (!reading) {
     return (
       <Screen>
@@ -29,7 +29,7 @@ export default function ReadingDetail() {
         tone="quiet"
         onPress={() =>
           void Share.share({
-            message: site ? `${site}/reading-room/${reading.slug}` : `gosolo://reading-room/${reading.slug}`,
+            message: site ? `${site}/reading/${reading.slug}` : `gosolo://reading-room/${reading.slug}`,
           })
         }
       />

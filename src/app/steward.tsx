@@ -4,14 +4,14 @@ import { useCommunity } from "@/state/community";
 
 export default function Steward() {
   const { user, shell, stewardModerate, content } = useCommunity();
-  const site = process.env.EXPO_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  const site = (process.env.EXPO_PUBLIC_SITE_URL || process.env.EXPO_PUBLIC_API_URL || "").replace(/\/$/, "");
   if (user?.role !== "admin") {
     return (
       <Screen>
         <TopBar back />
         <Title>Steward desk</Title>
         <Body>This room is only for stewards. Hiding the button is not the lock. The server checks the role.</Body>
-        {site ? <Button label="Open the desk on the web" onPress={() => void Linking.openURL(`${site}/admin`)} /> : null}
+        {site ? <Button label="Open the desk on the web" onPress={() => void Linking.openURL(`${site}/steward`)} /> : null}
       </Screen>
     );
   }

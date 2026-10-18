@@ -9,7 +9,14 @@ import { router } from "expo-router";
 export default function MemberGarden() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const community = useCommunity();
-  const decision = community.user && id ? contactBetween(community.shell.world, community.user.id, id) : null;
+  const local = community.user && id ? contactBetween(community.shell.world, community.user.id, id) : null;
+  const decision =
+    community.mode === "live" && id && community.shell.contactIds
+      ? {
+          allowed: community.shell.contactIds.includes(id),
+          message: "A private conversation is not available right now.",
+        }
+      : local;
   return (
     <Screen>
       <TopBar back title="Garden" />

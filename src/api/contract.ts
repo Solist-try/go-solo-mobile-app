@@ -39,6 +39,8 @@ export type Shell = {
   capabilities: Capabilities;
   needsVerification?: boolean;
   fromCache?: boolean;
+  contactIds?: string[];
+  readings?: import("@/domain/fallback-readings").Reading[];
 };
 
 export type StoryInput = {
@@ -70,9 +72,9 @@ export type Repository = {
   signUp(email: string, password: string, displayName: string): Promise<import("./result").ApiResult<Shell>>;
   signOut(): Promise<void>;
   requestPasswordReset(email: string): Promise<import("./result").ApiResult<null>>;
-  updatePassword(password: string): Promise<import("./result").ApiResult<null>>;
+  updatePassword(current: string, next: string): Promise<import("./result").ApiResult<null>>;
   resendVerification(): Promise<import("./result").ApiResult<null>>;
-  deleteAccount(): Promise<import("./result").ApiResult<null>>;
+  deleteAccount(confirm: string): Promise<import("./result").ApiResult<null>>;
   refresh(): Promise<import("./result").ApiResult<Shell>>;
   updateProfile(patch: Partial<Profile>): Promise<import("./result").ApiResult<Shell>>;
   setInterests(ids: string[]): Promise<import("./result").ApiResult<Shell>>;

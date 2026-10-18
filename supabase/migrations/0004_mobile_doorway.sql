@@ -1,6 +1,10 @@
--- Additive doorway for the Go Solo mobile apps.
--- Run on the same Supabase database as the website, after 0001, 0002, and 0003.
--- Safe to run more than once. It does not replace existing tables.
+-- NOT the live Go Solo database.
+-- The website that is actually running is PHP and MySQL.
+-- Mobile tokens and planted-seed status live in host/sql/update-api.sql.
+-- Do not paste this file into phpMyAdmin.
+--
+-- This script was written for an earlier Supabase draft of the website.
+-- It is kept so that draft can still be read. It is not an install step.
 
 alter table public.profiles add column if not exists communication_preference text not null default 'contextual';
 alter table public.profiles add column if not exists onboarding_step text;

@@ -180,24 +180,26 @@ export function createPreviewRepository(): Repository {
       }
       return ok(null);
     },
-    async updatePassword(password) {
+    async updatePassword(current, next) {
       const gate = requireUser();
       if (!gate.ok) return gate;
-      if (password.length < 8) return fail("validation", "Use at least 8 characters.");
+      if (next.length < 8) return fail("validation", "Use at least 8 characters.");
       const rows = await authRows();
       const row = rows.find((item) => item.id === gate.data.id);
       if (!row) return fail("unauthorized", "Sign in to continue.");
+      if ((await hashPassword(current, row.salt)) !== row.hash) return fail("validation", "The current password does not match.");
       row.salt = createId();
-      row.hash = await hashPassword(password, row.salt);
+      row.hash = await hashPassword(next, row.salt);
       await saveAuth(rows);
       return ok(null);
     },
     async resendVerification() {
       return ok(null);
     },
-    async deleteAccount() {
+    async deleteAccount(confirm) {
       const gate = requireUser();
       if (!gate.ok) return gate;
+      if (confirm.trim() !== gate.data.displayName.trim()) return fail("validation", "Type your name exactly, so this stays deliberate.");
       const id = gate.data.id;
       world.profiles = world.profiles.filter((item) => item.id !== id);
       world.userSeeds = world.userSeeds.filter((item) => item.userId !== id);
