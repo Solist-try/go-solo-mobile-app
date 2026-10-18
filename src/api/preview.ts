@@ -199,7 +199,7 @@ export function createPreviewRepository(): Repository {
     async deleteAccount(confirm) {
       const gate = requireUser();
       if (!gate.ok) return gate;
-      if (confirm.trim() !== gate.data.displayName.trim()) return fail("validation", "Type your name exactly, so this stays deliberate.");
+      if (confirm.trim() !== "DELETE") return fail("validation", "Type DELETE to close the account.");
       const id = gate.data.id;
       world.profiles = world.profiles.filter((item) => item.id !== id);
       world.userSeeds = world.userSeeds.filter((item) => item.userId !== id);

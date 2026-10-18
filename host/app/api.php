@@ -445,8 +445,8 @@ function api_delete(): void
 {
     $user = api_member();
     $confirm = api_text('confirm', 80);
-    if ($confirm !== (string) $user['display_name']) {
-        api_fail(422, 'validation', 'Type your name exactly, so this stays deliberate.');
+    if ($confirm !== 'DELETE') {
+        api_fail(422, 'validation', 'Type DELETE to close the account.');
     }
     if ($user['role'] === 'admin') {
         $others = count_of("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND id <> ?", [(int) $user['id']]);

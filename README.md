@@ -6,7 +6,9 @@ Go Solo, Not Alone.
 
 ## What this is
 
-The live website is the PHP application at [gosolo.co.network](https://gosolo.co.network). Members, writing, waypoints, and conversations already live in its MySQL database. This app is another door into that house. It does not open a second database, and the phone never connects to MySQL.
+The live website is the PHP application at [gosolo.co.network](https://gosolo.co.network). Members, writing, waypoints, and conversations already live in its SQL database. This app is another door into that house. It does not open a second database, and the phone never connects to SQL.
+
+The audit of that house is [docs/mobile/current-architecture-audit.md](docs/mobile/current-architecture-audit.md). The client choice is [docs/mobile/architecture-decision.md](docs/mobile/architecture-decision.md).
 
 ```
 iOS app

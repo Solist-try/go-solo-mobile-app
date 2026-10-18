@@ -44,4 +44,4 @@ RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 - Eight wrong passwords for one email in 15 minutes is enough. The counter is `api_attempts`.
 - Contact, blocks, chairs, and steward actions call the PHP functions the website already uses.
 - A phone photo is refused, with the draft left on the device. Add the picture on the website.
-- Deleting an account requires the display name and then `DELETE FROM users`.
+- Deleting an account requires the word DELETE, the same confirmation as the website, and then `DELETE FROM users`.

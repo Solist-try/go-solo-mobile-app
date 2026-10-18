@@ -35,14 +35,14 @@ export default function Account() {
         <Body key={fact}>{fact}</Body>
       ))}
       <Muted>This follows the house rule: the account row is deleted, and rows that belong to it go with it. It is immediate.</Muted>
-      <Field label="Type your name to confirm" value={confirm} onChangeText={setConfirm} />
+      <Field label="Type DELETE to confirm" value={confirm} onChangeText={setConfirm} autoCapitalize="characters" />
       <ErrorNote>{error}</ErrorNote>
       <Button
         label="Delete account"
         tone="ink"
         onPress={async () => {
-          if (confirm.trim() !== user.displayName.trim()) {
-            setError("Type your name exactly, so this stays deliberate.");
+          if (confirm.trim() !== "DELETE") {
+            setError("Type DELETE to close the account.");
             return;
           }
           const message = await deleteAccount(confirm.trim());
