@@ -1,11 +1,9 @@
 import * as ImagePicker from "expo-image-picker";
 
 export async function pickPhoto() {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) return null;
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
-    quality: 0.8,
+    quality: 0.7,
   });
   if (result.canceled || !result.assets[0]) return null;
   return result.assets[0];

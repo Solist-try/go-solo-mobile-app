@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SEEDS, WAYPOINTS } from "@/domain/fallback-catalog";
 import { CONTENT_CACHE_KEY, mergeContent } from "@/domain/content";
+import { deviceLocalPath } from "@/domain/media";
 import { emptyWorld, type Profile } from "@/domain/types";
 import type { Reading } from "@/domain/fallback-readings";
 import { createSecureStorage } from "./secure-storage";
@@ -9,6 +10,8 @@ import {
   blankProfile,
   emptyCapabilities,
   type CampfireInput,
+  type MediaRecord,
+  type MediaUpload,
   type Repository,
   type Shell,
   type StoryInput,
@@ -173,8 +176,6 @@ async function remember(shell: Shell) {
   return shell;
 }
 
-const PHOTO = "A photo from the phone is added on the website for now. Your words are still here.";
-
 export function createLiveRepository(): Repository {
   if (!liveConfigured()) throw new Error("The PHP house address is not configured.");
   const storage = createSecureStorage();
@@ -302,8 +303,71 @@ export function createLiveRepository(): Repository {
     return ok(await remember(adopt(row.shell)));
   }
 
-  function words(input: { imageUrl?: string }) {
-    return Boolean(input.imageUrl);
+  function loosePhoto(input: { imageUrl?: string; mediaId?: string }) {
+    if (input.imageUrl && (deviceLocalPath(input.imageUrl) || !input.mediaId)) {
+      return "Send the photo as a file. A path from the phone is not kept.";
+    }
+    return "";
+  }
+
+  async function sendFile(path: string, input: MediaUpload): Promise<ApiResult<unknown>> {
+    await ensureTokens();
+    const mime = input.mime || "image/jpeg";
+    const name = mime.includes("png") ? "photo.png" : mime.includes("webp") ? "photo.webp" : mime.includes("gif") ? "photo.gif" : "photo.jpg";
+    const form = new FormData();
+    form.append("context", input.context);
+    form.append("alt", input.alt ?? "");
+    form.append("file", { uri: input.uri, name, type: mime } as unknown as Blob);
+    const post = () =>
+      new Promise<ApiResult<unknown>>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${base}/api/v1${path}`);
+        xhr.setRequestHeader("Accept", "application/json");
+        if (tokens?.access) {
+          xhr.setRequestHeader("Authorization", `Bearer ${tokens.access}`);
+          xhr.setRequestHeader("X-Go-Solo-Authorization", tokens.access);
+        }
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && input.onProgress) input.onProgress(event.loaded / event.total);
+        };
+        xhr.onload = () => {
+          let payload: unknown = null;
+          try {
+            payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+          } catch {
+            payload = null;
+          }
+          const row = isRecord(payload) ? payload : null;
+          if (xhr.status < 200 || xhr.status >= 300 || !row || row.ok !== true) {
+            const error = isRecord(row?.error) ? row.error : null;
+            const message = typeof error?.message === "string" ? error.message : "That photo did not land. Try again.";
+            resolve(fail(codeFrom(error?.code, xhr.status), message));
+            return;
+          }
+          resolve(ok(row.data));
+        };
+        xhr.onerror = () => resolve(fail("offline", "The connection dropped. Nothing was published."));
+        xhr.send(form);
+      });
+    const first = await post();
+    if (!first.ok && first.error.code === "unauthorized" && tokens?.refresh) {
+      const rotated = await rotate();
+      if (rotated) return post();
+    }
+    return first;
+  }
+
+  function mediaRecord(data: unknown): MediaRecord | null {
+    if (!isRecord(data) || !isRecord(data.media)) return null;
+    const media = data.media;
+    if (typeof media.id !== "string" && typeof media.id !== "number") return null;
+    if (typeof media.url !== "string" || typeof media.context !== "string") return null;
+    return {
+      id: String(media.id),
+      url: media.url,
+      alt: typeof media.alt === "string" ? media.alt : "",
+      context: media.context as MediaRecord["context"],
+    };
   }
 
   return {
@@ -352,8 +416,33 @@ export function createLiveRepository(): Repository {
     async setInterests() {
       return open();
     },
-    uploadAvatar() {
-      return Promise.resolve(fail("unavailable", "A profile photo is added on the website for now."));
+    async uploadAvatar(uri, mime) {
+      const uploaded = await sendFile("/media", { uri, mime, context: "profile" });
+      if (!uploaded.ok) return uploaded;
+      return open();
+    },
+    async uploadMedia(input: MediaUpload) {
+      const uploaded = await sendFile("/media", input);
+      if (!uploaded.ok) return uploaded;
+      const media = mediaRecord(uploaded.data);
+      if (!media || deviceLocalPath(media.url)) return fail("server", "The house did not keep that photo.");
+      return ok(media);
+    },
+    async removeMedia(id) {
+      const result = await call("/media/remove", { body: { id } });
+      return result.ok ? ok(null) : result;
+    },
+    async readingNote(slug) {
+      const result = await call(`/readings/note?slug=${encodeURIComponent(slug)}`, { method: "GET" });
+      if (!result.ok) return result;
+      const body = isRecord(result.data) && typeof result.data.body === "string" ? result.data.body : "";
+      return ok({ body });
+    },
+    async saveReadingNote(slug, body) {
+      const result = await call("/readings/note", { body: { slug, body } });
+      if (!result.ok) return result;
+      const saved = isRecord(result.data) && typeof result.data.body === "string" ? result.data.body : body;
+      return ok({ body: saved });
     },
     plantSeed(seedId, goal) {
       return shell("/seeds/plant", { seedId, goal });
@@ -384,19 +473,35 @@ export function createLiveRepository(): Repository {
       return shell("/waypoints/leave", { id });
     },
     publishCampfire(input: CampfireInput) {
-      if (words(input)) return Promise.resolve(fail("validation", PHOTO));
-      return shell("/campfire", { title: input.title, body: input.body, waypointId: input.waypointId ?? "" });
+      const held = loosePhoto(input);
+      if (held) return Promise.resolve(fail("validation", held));
+      return shell("/campfire", {
+        title: input.title,
+        body: input.body,
+        waypointId: input.waypointId ?? "",
+        mediaId: input.mediaId ?? "",
+        imageAlt: input.imageAlt ?? "",
+      });
     },
     publishStory(input: StoryInput) {
-      if (words(input)) return Promise.resolve(fail("validation", PHOTO));
-      return shell("/stories", { title: input.title, body: input.body });
+      const held = loosePhoto(input);
+      if (held) return Promise.resolve(fail("validation", held));
+      return shell("/stories", { title: input.title, body: input.body, mediaId: input.mediaId ?? "", imageAlt: input.imageAlt ?? "" });
     },
     updateStory(id, input) {
-      if (words(input)) return Promise.resolve(fail("validation", PHOTO));
-      return shell("/stories/update", { id, title: input.title, body: input.body });
+      const held = loosePhoto(input);
+      if (held) return Promise.resolve(fail("validation", held));
+      return shell("/stories/update", {
+        id,
+        title: input.title,
+        body: input.body,
+        mediaId: input.mediaId ?? "",
+        imageAlt: input.imageAlt ?? "",
+        clearImage: input.clearImage ? "1" : "",
+      });
     },
-    comment(targetType, targetId, body) {
-      return shell("/comments", { targetType, targetId, body });
+    comment(targetType, targetId, body, mediaId, imageAlt) {
+      return shell("/comments", { targetType, targetId, body, mediaId: mediaId ?? "", imageAlt: imageAlt ?? "" });
     },
     react() {
       return Promise.resolve(fail("unavailable", "Named reactions are not part of this house."));
@@ -473,8 +578,9 @@ export function createLiveRepository(): Repository {
       if (!agree) return Promise.resolve(fail("unavailable", "Leaving the chair to close is enough. Nothing else is sent."));
       return shell("/sessions/keep", { id });
     },
-    registerPushToken() {
-      return Promise.resolve(fail("unavailable", "Phone notifications are not on this house yet. In-app notes still work."));
+    async registerPushToken(token, platform) {
+      const result = await call("/devices", { body: { token, platform } });
+      return result.ok ? ok(null) : result;
     },
   };
 }

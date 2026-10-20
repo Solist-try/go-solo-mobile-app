@@ -80,3 +80,36 @@ DEALLOCATE PREPARE api_stmt;
 
 INSERT INTO schema_updates (update_key, applied_at) VALUES ('api-2026-10-18', NOW())
 ON DUPLICATE KEY UPDATE applied_at = applied_at;
+
+-- Private reading notes, and a place to remember a phone for a later alert sender.
+-- Paste this file again if the first paste was only the token tables.
+-- A second paste is safe. The app does not request notification permission and does not send a token yet.
+
+CREATE TABLE IF NOT EXISTS reading_notes (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id INT UNSIGNED NOT NULL,
+  reading_id INT UNSIGNED NOT NULL,
+  body TEXT NOT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY reading_notes_one (user_id, reading_id),
+  KEY reading_notes_reading (reading_id),
+  CONSTRAINT reading_notes_user_fk FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT reading_notes_reading_fk FOREIGN KEY (reading_id) REFERENCES readings (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS push_devices (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id INT UNSIGNED NOT NULL,
+  platform ENUM('ios', 'android') NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  revoked_at DATETIME NULL,
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY push_devices_token (token),
+  KEY push_devices_user (user_id, revoked_at),
+  CONSTRAINT push_devices_user_fk FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_updates (update_key, applied_at) VALUES ('api-notes-2026-10-20', NOW())
+ON DUPLICATE KEY UPDATE applied_at = applied_at;

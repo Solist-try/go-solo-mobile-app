@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Body, Button, Card, ErrorNote, Field, Muted, Screen, TextLink, Title, TopBar } from "@/components/ui";
 import { QuietPhoto } from "@/components/photo";
+import { emptyPhoto, photoHold, PhotoDraft, type PhotoState } from "@/components/photo-draft";
 import { RichText } from "@/components/rich-text";
 import { REACTIONS } from "@/domain/types";
 import { formatDay } from "@/domain/format";
@@ -13,6 +14,8 @@ export default function CampfireDetail() {
   const community = useCommunity();
   const post = community.shell.world.campfire.find((item) => item.id === id);
   const [reply, setReply] = useState("");
+  const [photo, setPhoto] = useState<PhotoState>(emptyPhoto);
+  const [photoKey, setPhotoKey] = useState(0);
   const [error, setError] = useState("");
   if (!post) {
     return (
@@ -59,16 +62,27 @@ export default function CampfireDetail() {
         <Card key={comment.id}>
           <Muted>{community.nameOf(comment.authorId)}</Muted>
           <RichText value={comment.body} />
+          <QuietPhoto uri={comment.imageUrl} alt={comment.imageAlt} />
         </Card>
       ))}
       <Field label="Reply" value={reply} onChangeText={setReply} multiline />
+      <PhotoDraft key={photoKey} context="comment" onChange={setPhoto} />
       <ErrorNote>{error}</ErrorNote>
       <Button
         label="Leave a reply"
         onPress={async () => {
-          const message = await community.comment("campfire", post.id, reply);
+          const held = photoHold(photo);
+          if (held) {
+            setError(held);
+            return;
+          }
+          const message = await community.comment("campfire", post.id, reply, photo.mediaId || undefined, photo.alt);
           if (message) setError(message);
-          else setReply("");
+          else {
+            setReply("");
+            setPhoto(emptyPhoto);
+            setPhotoKey((item) => item + 1);
+          }
         }}
       />
       {community.user && community.user.id !== post.authorId ? (

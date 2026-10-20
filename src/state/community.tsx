@@ -17,7 +17,7 @@ import {
 } from "@/domain/types";
 import { createLiveRepository, liveConfigured } from "@/api/live";
 import { createPreviewRepository } from "@/api/preview";
-import type { CampfireInput, Repository, Shell, StoryInput } from "@/api/contract";
+import type { CampfireInput, MediaRecord, MediaUpload, Repository, Shell, StoryInput } from "@/api/contract";
 import type { Report } from "@/domain/types";
 
 type Draft = { id: string; kind: string; body: string; updatedAt: string };
@@ -52,7 +52,11 @@ type CommunityValue = {
   publishCampfire: (input: CampfireInput) => Promise<string | null>;
   publishStory: (input: StoryInput) => Promise<string | null>;
   updateStory: (id: string, input: StoryInput) => Promise<string | null>;
-  comment: (targetType: "campfire" | "out-there", targetId: string, body: string) => Promise<string | null>;
+  uploadMedia: (input: MediaUpload) => Promise<{ media: MediaRecord } | { error: string }>;
+  removeMedia: (id: string) => Promise<string | null>;
+  readingNote: (slug: string) => Promise<{ body: string } | { error: string; code: string }>;
+  saveReadingNote: (slug: string, body: string) => Promise<{ body: string } | { error: string; code: string }>;
+  comment: (targetType: "campfire" | "out-there", targetId: string, body: string, mediaId?: string, imageAlt?: string) => Promise<string | null>;
   react: (targetType: "campfire" | "out-there", targetId: string, kind: ReactionKind | null) => Promise<string | null>;
   offerSkill: (skill: string, description: string) => Promise<string | null>;
   requestSkill: (skill: string, description: string) => Promise<string | null>;
@@ -200,6 +204,34 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
       updateProfile: async (patch) => apply(await repo().updateProfile(patch)),
       setInterests: async (ids) => apply(await repo().setInterests(ids)),
       uploadAvatar: async (uri, mime) => apply(await repo().uploadAvatar(uri, mime)),
+      uploadMedia: async (input) => {
+        const result = await repo().uploadMedia(input);
+        if (!result.ok) return { error: result.error.message };
+        if (input.context === "profile") {
+          const refreshed = await repo().refresh();
+          if (refreshed.ok) setShell(refreshed.data);
+        }
+        return { media: result.data };
+      },
+      removeMedia: async (id) => {
+        const result = await repo().removeMedia(id);
+        if (!result.ok) return result.error.message;
+        if (id === "avatar") {
+          const refreshed = await repo().refresh();
+          if (refreshed.ok) setShell(refreshed.data);
+        }
+        return null;
+      },
+      readingNote: async (slug) => {
+        const result = await repo().readingNote(slug);
+        if (!result.ok) return { error: result.error.message, code: result.error.code };
+        return { body: result.data.body };
+      },
+      saveReadingNote: async (slug, body) => {
+        const result = await repo().saveReadingNote(slug, body);
+        if (!result.ok) return { error: result.error.message, code: result.error.code };
+        return { body: result.data.body };
+      },
       plantSeed: async (seedId, goal) => apply(await repo().plantSeed(seedId, goal)),
       setSeedStatus: async (id, status) => apply(await repo().setSeedStatus(id, status)),
       addSeedReflection: async (id, note) => apply(await repo().addSeedReflection(id, note)),
@@ -211,7 +243,8 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
       publishCampfire: async (input) => apply(await repo().publishCampfire(input)),
       publishStory: async (input) => apply(await repo().publishStory(input)),
       updateStory: async (id, input) => apply(await repo().updateStory(id, input)),
-      comment: async (targetType, targetId, body) => apply(await repo().comment(targetType, targetId, body)),
+      comment: async (targetType, targetId, body, mediaId, imageAlt) =>
+        apply(await repo().comment(targetType, targetId, body, mediaId, imageAlt)),
       react: async (targetType, targetId, kind) => apply(await repo().react(targetType, targetId, kind)),
       offerSkill: async (skill, description) => apply(await repo().offerSkill(skill, description)),
       requestSkill: async (skill, description) => apply(await repo().requestSkill(skill, description)),

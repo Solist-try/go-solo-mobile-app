@@ -18,6 +18,7 @@ import {
 } from "@/domain/types";
 import { createSecureStorage } from "./secure-storage";
 import { fail, ok, type ApiResult } from "./result";
+import type { MediaRecord } from "./contract";
 import {
   blankProfile,
   fullCapabilities,
@@ -31,6 +32,7 @@ const secure = createSecureStorage();
 const AUTH_KEY = "gosolo.preview.auth";
 const SESSION_KEY = "gosolo.preview.session";
 const WORLD_KEY = "gosolo.preview.world";
+const previewFiles = new Map<string, MediaRecord>();
 
 type AuthRow = { id: string; email: string; salt: string; hash: string };
 
@@ -239,8 +241,42 @@ export function createPreviewRepository(): Repository {
     async uploadAvatar(uri) {
       const gate = requireUser();
       if (!gate.ok) return gate;
+      previewFiles.set("avatar", { id: "avatar", url: uri, alt: "", context: "profile" });
       gate.data.avatarUrl = uri;
       return done();
+    },
+    async uploadMedia(input) {
+      const gate = requireUser();
+      if (!gate.ok) return gate;
+      const id = input.context === "profile" ? "avatar" : createId();
+      const media: MediaRecord = { id, url: input.uri, alt: input.alt ?? "", context: input.context };
+      previewFiles.set(id, media);
+      if (input.context === "profile") gate.data.avatarUrl = input.uri;
+      input.onProgress?.(1);
+      await persist();
+      return ok(media);
+    },
+    async removeMedia(id) {
+      const gate = requireUser();
+      if (!gate.ok) return gate;
+      previewFiles.delete(id);
+      if (id === "avatar") gate.data.avatarUrl = "";
+      await persist();
+      return ok(null);
+    },
+    async readingNote(slug) {
+      const gate = requireUser();
+      if (!gate.ok) return gate;
+      const body = (await AsyncStorage.getItem(`gosolo.preview.note.${gate.data.id}.${slug}`)) ?? "";
+      return ok({ body });
+    },
+    async saveReadingNote(slug, body) {
+      const gate = requireUser();
+      if (!gate.ok) return gate;
+      const key = `gosolo.preview.note.${gate.data.id}.${slug}`;
+      if (!body.trim()) await AsyncStorage.removeItem(key);
+      else await AsyncStorage.setItem(key, body.trim());
+      return ok({ body: body.trim() });
     },
     async plantSeed(seedId, goal) {
       const gate = requireUser();
@@ -331,6 +367,7 @@ export function createPreviewRepository(): Repository {
       if (!gate.ok) return gate;
       if (!input.body.trim()) return fail("validation", "Write something before you share it.");
       if (!throttle()) return fail("rate_limited", "That is a little fast. Wait a moment, then try again.");
+      const file = input.mediaId ? previewFiles.get(input.mediaId) : undefined;
       world.campfire.unshift({
         id: createId(),
         authorId: gate.data.id,
@@ -339,7 +376,7 @@ export function createPreviewRepository(): Repository {
         title: input.title.trim(),
         body: input.body.trim(),
         waypointId: input.waypointId,
-        imageUrl: input.imageUrl,
+        imageUrl: file?.url,
         imageAlt: input.imageAlt,
         createdAt: new Date().toISOString(),
       });
@@ -349,6 +386,7 @@ export function createPreviewRepository(): Repository {
       const gate = requireUser();
       if (!gate.ok) return gate;
       if (!input.title.trim() || !input.body.trim()) return fail("validation", "A story needs a title and what happened.");
+      const file = input.mediaId ? previewFiles.get(input.mediaId) : undefined;
       world.stories.unshift({
         id: createId(),
         authorId: gate.data.id,
@@ -357,7 +395,7 @@ export function createPreviewRepository(): Repository {
         expecting: "",
         actuallyHappened: "",
         wouldDoAgain: "yes",
-        imageUrl: input.imageUrl,
+        imageUrl: file?.url,
         imageAlt: input.imageAlt,
         createdAt: new Date().toISOString(),
       });
@@ -370,16 +408,16 @@ export function createPreviewRepository(): Repository {
       if (!story) return fail("forbidden", "You can edit a story you wrote.");
       story.title = input.title.trim();
       story.whatDidYouDo = input.body.trim();
-      if (input.clearImage) {
-        story.imageUrl = undefined;
-        story.imageAlt = undefined;
-      } else if (input.imageUrl) {
-        story.imageUrl = input.imageUrl;
-        if (input.imageAlt !== undefined) story.imageAlt = input.imageAlt;
+      const file = input.mediaId ? previewFiles.get(input.mediaId) : undefined;
+      if (input.clearImage || file) {
+        story.imageUrl = file?.url;
+        story.imageAlt = input.imageAlt;
+      } else if (input.imageAlt !== undefined) {
+        story.imageAlt = input.imageAlt;
       }
       return done();
     },
-    async comment(targetType, targetId, body) {
+    async comment(targetType, targetId, body, mediaId, imageAlt) {
       const gate = requireUser();
       if (!gate.ok) return gate;
       if (!body.trim()) return fail("validation", "Write a reply first.");
@@ -387,12 +425,15 @@ export function createPreviewRepository(): Repository {
       const target = list.find((item) => item.id === targetId && !item.hidden);
       if (!target) return fail("not_found", "That conversation is not here.");
       if ("locked" in target && target.locked) return fail("forbidden", "This conversation is closed.");
+      const file = mediaId ? previewFiles.get(mediaId) : undefined;
       world.comments.push({
         id: createId(),
         authorId: gate.data.id,
         targetType,
         targetId,
         body: body.trim(),
+        imageUrl: file?.url,
+        imageAlt,
         createdAt: new Date().toISOString(),
       });
       if (target.authorId !== gate.data.id) notify(target.authorId, "reply", `/${targetType}/${targetId}`);

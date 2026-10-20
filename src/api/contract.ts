@@ -43,11 +43,27 @@ export type Shell = {
   readings?: import("@/domain/fallback-readings").Reading[];
 };
 
+export type MediaContext = "campfire" | "story" | "waypoint" | "comment" | "profile";
+
+export type MediaRecord = {
+  id: string;
+  url: string;
+  alt: string;
+  context: MediaContext;
+};
+
+export type MediaUpload = {
+  uri: string;
+  mime: string;
+  context: MediaContext;
+  alt?: string;
+  onProgress?: (ratio: number) => void;
+};
+
 export type StoryInput = {
   title: string;
   body: string;
-  imageUrl?: string;
-  imageMime?: string;
+  mediaId?: string;
   imageAlt?: string;
   clearImage?: boolean;
   clientKey?: string;
@@ -59,8 +75,7 @@ export type CampfireInput = {
   title: string;
   body: string;
   waypointId?: string;
-  imageUrl?: string;
-  imageMime?: string;
+  mediaId?: string;
   imageAlt?: string;
   clientKey?: string;
 };
@@ -79,6 +94,10 @@ export type Repository = {
   updateProfile(patch: Partial<Profile>): Promise<import("./result").ApiResult<Shell>>;
   setInterests(ids: string[]): Promise<import("./result").ApiResult<Shell>>;
   uploadAvatar(uri: string, mime: string): Promise<import("./result").ApiResult<Shell>>;
+  uploadMedia(input: MediaUpload): Promise<import("./result").ApiResult<MediaRecord>>;
+  removeMedia(id: string): Promise<import("./result").ApiResult<null>>;
+  readingNote(slug: string): Promise<import("./result").ApiResult<{ body: string }>>;
+  saveReadingNote(slug: string, body: string): Promise<import("./result").ApiResult<{ body: string }>>;
   plantSeed(seedId: string, goal: string): Promise<import("./result").ApiResult<Shell>>;
   setSeedStatus(userSeedId: string, status: SeedStatus): Promise<import("./result").ApiResult<Shell>>;
   addSeedReflection(userSeedId: string, note: string): Promise<import("./result").ApiResult<Shell>>;
@@ -90,7 +109,7 @@ export type Repository = {
   publishCampfire(input: CampfireInput): Promise<import("./result").ApiResult<Shell>>;
   publishStory(input: StoryInput): Promise<import("./result").ApiResult<Shell>>;
   updateStory(id: string, input: StoryInput): Promise<import("./result").ApiResult<Shell>>;
-  comment(targetType: "campfire" | "out-there", targetId: string, body: string): Promise<import("./result").ApiResult<Shell>>;
+  comment(targetType: "campfire" | "out-there", targetId: string, body: string, mediaId?: string, imageAlt?: string): Promise<import("./result").ApiResult<Shell>>;
   react(targetType: "campfire" | "out-there", targetId: string, kind: ReactionKind | null): Promise<import("./result").ApiResult<Shell>>;
   offerSkill(skill: string, description: string): Promise<import("./result").ApiResult<Shell>>;
   requestSkill(skill: string, description: string): Promise<import("./result").ApiResult<Shell>>;

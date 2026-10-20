@@ -25,7 +25,7 @@ export default function Settings() {
       <Button label={user.notifyReplies ? "Replies are on" : "Replies are off"} tone="quiet" onPress={() => void community.updateProfile({ notifyReplies: !user.notifyReplies })} />
       <Button label={user.notifyWaypoints ? "Waypoint notes are on" : "Waypoint notes are off"} tone="quiet" onPress={() => void community.updateProfile({ notifyWaypoints: !user.notifyWaypoints })} />
       <Button label={user.notifyCheckins ? "Check-in notes are on" : "Check-in notes are off"} tone="quiet" onPress={() => void community.updateProfile({ notifyCheckins: !user.notifyCheckins })} />
-      <Muted>Phone notifications are not on this house yet. In-app notes still work, and they stay short.</Muted>
+      <Muted>Phone alerts are not sent, and this app does not ask for notification permission. Notes inside the app still arrive, and they stay short.</Muted>
       <Title>People you have blocked</Title>
       {community.shell.world.blocks.filter((block) => block.blockerId === user.id).map((block) => (
         <Button key={block.id} label={`Unblock ${community.nameOf(block.blockedId)}`} tone="quiet" onPress={() => void community.unblock(block.blockedId)} />

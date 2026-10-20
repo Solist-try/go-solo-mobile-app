@@ -1,8 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Body, Button, Card, Choice, ErrorNote, Field, Muted, Screen, Title, TopBar } from "@/components/ui";
-import { pickPhoto } from "@/components/media";
-import { QuietPhoto } from "@/components/photo";
+import { emptyPhoto, photoHold, PhotoDraft, type PhotoState } from "@/components/photo-draft";
 import { CAMPFIRE_KINDS, CAMPFIRE_SECTIONS } from "@/domain/types";
 import { useCommunity } from "@/state/community";
 
@@ -18,13 +17,16 @@ export default function NewCampfire() {
   const [body, setBody] = useState(draft("campfire"));
   const [section, setSection] = useState<(typeof CAMPFIRE_SECTIONS)[number]["id"]>("general");
   const [kind, setKind] = useState<(typeof CAMPFIRE_KINDS)[number]["id"]>("thought");
-  const [imageUri, setImageUri] = useState("");
-  const [imageMime, setImageMime] = useState("");
-  const [alt, setAlt] = useState("");
+  const [photo, setPhoto] = useState<PhotoState>(emptyPhoto);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
   async function submit() {
+    const held = photoHold(photo);
+    if (held) {
+      setError(held);
+      return;
+    }
     setPending(true);
     await saveDraft("campfire", body);
     const message = await publishCampfire({
@@ -33,9 +35,8 @@ export default function NewCampfire() {
       title,
       body,
       waypointId,
-      imageUrl: imageUri || undefined,
-      imageMime: imageMime || undefined,
-      imageAlt: alt || undefined,
+      mediaId: photo.mediaId || undefined,
+      imageAlt: photo.alt,
     });
     setPending(false);
     if (message) {
@@ -72,29 +73,7 @@ export default function NewCampfire() {
       )}
       <Field label="Title" value={title} onChangeText={setTitle} />
       <Field label={source && keepSource ? "What stayed with you?" : "What do you want to say?"} value={body} onChangeText={setBody} multiline />
-      <QuietPhoto uri={imageUri} alt={alt} />
-      <Button
-        label="Choose a photo"
-        tone="quiet"
-        onPress={async () => {
-          const asset = await pickPhoto();
-          if (!asset) return;
-          setImageUri(asset.uri);
-          setImageMime(asset.mimeType ?? "image/jpeg");
-        }}
-      />
-      {imageUri ? <Field label="Alt text" value={alt} onChangeText={setAlt} /> : null}
-      {imageUri ? (
-        <Button
-          label="Remove photo"
-          tone="quiet"
-          onPress={() => {
-            setImageUri("");
-            setImageMime("");
-            setAlt("");
-          }}
-        />
-      ) : null}
+      <PhotoDraft context={waypointId ? "waypoint" : "campfire"} onChange={setPhoto} />
       <ErrorNote>{error}</ErrorNote>
       {error ? <Muted>The draft is still on this device.</Muted> : null}
       <Button label={pending ? "Sharing" : "Share it"} onPress={() => void submit()} disabled={pending} />

@@ -8,7 +8,7 @@ The app stays in preview until this is uploaded and `EXPO_PUBLIC_API_URL` is set
 
 In phpMyAdmin, select the site database and run `host/sql/update-api.sql`.
 
-That adds `api_tokens`, `api_attempts`, an optional `client_key` on conversation messages, and status, goal, and reflection columns on planted seeds. A second paste is safe. It records `api-2026-10-18` in `schema_updates`.
+That adds `api_tokens`, `api_attempts`, an optional `client_key` on conversation messages, status, goal, and reflection columns on planted seeds, `reading_notes`, and `push_devices`. A second paste is safe. If an earlier paste already ran, paste the file again so the note and device tables are created. It records `api-2026-10-18` and `api-notes-2026-10-20` in `schema_updates`.
 
 Do not run `supabase/migrations/0004_mobile_doorway.sql`. That file is not this database.
 
@@ -43,5 +43,7 @@ RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 - Access tokens last 15 minutes. Refresh tokens last 30 days, rotate on use, and a reused refresh token revokes that family.
 - Eight wrong passwords for one email in 15 minutes is enough. The counter is `api_attempts`.
 - Contact, blocks, chairs, and steward actions call the PHP functions the website already uses.
-- A phone photo is refused, with the draft left on the device. Add the picture on the website.
+- A phone photo is uploaded as a file to `POST /api/v1/media`. The house checks it with the same rules as the website and stores its own file. The phone path is not written into MySQL.
+- A reading note is saved on `reading_notes` for that member only.
+- `push_devices` is ready for a later alert sender. This app does not ask for notification permission and does not send a token.
 - Deleting an account requires the word DELETE, the same confirmation as the website, and then `DELETE FROM users`.

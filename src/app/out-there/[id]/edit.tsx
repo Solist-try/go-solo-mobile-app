@@ -1,8 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Button, ErrorNote, Field, Muted, Screen, Title, TopBar } from "@/components/ui";
-import { pickPhoto } from "@/components/media";
-import { QuietPhoto } from "@/components/photo";
+import { emptyPhoto, photoHold, PhotoDraft, type PhotoState } from "@/components/photo-draft";
 import { useCommunity } from "@/state/community";
 
 export default function EditStory() {
@@ -11,10 +10,7 @@ export default function EditStory() {
   const story = shell.world.stories.find((item) => item.id === id && item.authorId === user?.id);
   const [title, setTitle] = useState(story?.title ?? "");
   const [body, setBody] = useState(story?.whatDidYouDo ?? "");
-  const [imageUri, setImageUri] = useState("");
-  const [imageMime, setImageMime] = useState("");
-  const [alt, setAlt] = useState(story?.imageAlt ?? "");
-  const [cleared, setCleared] = useState(false);
+  const [photo, setPhoto] = useState<PhotoState>({ ...emptyPhoto, alt: story?.imageAlt ?? "" });
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -27,8 +23,6 @@ export default function EditStory() {
     );
   }
 
-  const shown = imageUri || (!cleared ? story.imageUrl : "");
-
   return (
     <Screen>
       <TopBar back title="Out There" />
@@ -36,44 +30,24 @@ export default function EditStory() {
       <Muted>The title and the story stay one piece. A photo is optional.</Muted>
       <Field label="Title" value={title} onChangeText={setTitle} />
       <Field label="The story" value={body} onChangeText={setBody} multiline />
-      <QuietPhoto uri={shown} alt={alt} />
-      <Button
-        label="Choose a different photo"
-        tone="quiet"
-        onPress={async () => {
-          const asset = await pickPhoto();
-          if (!asset) return;
-          setImageUri(asset.uri);
-          setImageMime(asset.mimeType ?? "image/jpeg");
-          setCleared(false);
-        }}
-      />
-      {shown ? <Field label="Alt text" value={alt} onChangeText={setAlt} /> : null}
-      {shown ? (
-        <Button
-          label="Remove photo"
-          tone="quiet"
-          onPress={() => {
-            setImageUri("");
-            setImageMime("");
-            setAlt("");
-            setCleared(true);
-          }}
-        />
-      ) : null}
+      <PhotoDraft context="story" existingUrl={story.imageUrl} existingAlt={story.imageAlt} onChange={setPhoto} />
       <ErrorNote>{error}</ErrorNote>
       <Button
         label={pending ? "Saving" : "Save the story"}
         disabled={pending}
         onPress={async () => {
+          const held = photoHold(photo);
+          if (held) {
+            setError(held);
+            return;
+          }
           setPending(true);
           const message = await updateStory(story.id, {
             title,
             body,
-            imageUrl: imageUri || undefined,
-            imageMime: imageMime || undefined,
-            imageAlt: alt,
-            clearImage: cleared && !imageUri,
+            mediaId: photo.mediaId || undefined,
+            imageAlt: photo.alt,
+            clearImage: photo.clear,
           });
           setPending(false);
           if (message) setError(message);

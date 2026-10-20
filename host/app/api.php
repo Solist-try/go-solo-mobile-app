@@ -106,6 +106,33 @@ function api_route(): void
     if ($method === 'POST' && $path === '/waypoints/leave') {
         api_waypoint(false);
     }
+    if ($method === 'POST' && $path === '/media') {
+        api_media_create();
+    }
+    if ($method === 'GET' && preg_match('#^/media/([0-9]+|avatar)$#', $path, $mediaMatch)) {
+        api_media_show($mediaMatch[1]);
+    }
+    if ($method === 'DELETE' && preg_match('#^/media/([0-9]+|avatar)$#', $path, $mediaMatch)) {
+        api_media_delete($mediaMatch[1]);
+    }
+    if ($method === 'POST' && $path === '/media/remove') {
+        api_media_delete(api_field('id', 20));
+    }
+    if ($method === 'GET' && $path === '/readings/note') {
+        api_reading_note(false);
+    }
+    if ($method === 'POST' && $path === '/readings/note') {
+        api_reading_note(true);
+    }
+    if ($method === 'POST' && $path === '/devices') {
+        api_device(false);
+    }
+    if ($method === 'DELETE' && $path === '/devices') {
+        api_device(true);
+    }
+    if ($method === 'POST' && $path === '/devices/remove') {
+        api_device(true);
+    }
     if ($method === 'POST' && $path === '/campfire') {
         api_campfire();
     }
@@ -223,7 +250,18 @@ function api_input(): array
 
 function api_text(string $key, int $max = 5000): string
 {
-    $value = api_input()[$key] ?? '';
+    return api_field($key, $max);
+}
+
+function api_field(string $key, int $max = 5000): string
+{
+    $value = $_POST[$key] ?? null;
+    if ($value === null) {
+        $value = api_input()[$key] ?? '';
+    }
+    if (is_int($value) || is_float($value)) {
+        $value = (string) $value;
+    }
     if (!is_string($value)) {
         return '';
     }
@@ -705,6 +743,436 @@ function api_waypoint(bool $join): void
     api_ok(api_shell());
 }
 
+function api_reject_loose_image(): void
+{
+    $url = api_field('imageUrl', 500);
+    if ($url === '') {
+        return;
+    }
+    api_fail(422, 'validation', 'Send the photo as a file. A path from the phone is not kept.');
+}
+
+function api_media_pace(int $userId): void
+{
+    $key = 'media:' . $userId;
+    $row = one(
+        'SELECT COUNT(*) AS n FROM api_attempts WHERE email = ? AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)',
+        [$key]
+    );
+    if ((int) ($row['n'] ?? 0) >= 20) {
+        error_log('Go Solo API: media rate limited');
+        api_fail(429, 'rate_limited', 'That is a lot of photos. Wait a little, then try again.');
+    }
+    exec_sql('INSERT INTO api_attempts (email, created_at) VALUES (?, NOW())', [$key]);
+}
+
+function api_upload_guard(string $field): ?string
+{
+    if (empty($_FILES[$field]) || !is_array($_FILES[$field])) {
+        return 'Choose a photo first.';
+    }
+    $error = (int) ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($error === UPLOAD_ERR_NO_FILE) {
+        return 'Choose a photo first.';
+    }
+    if (function_exists('upload_problem')) {
+        $problem = upload_problem($field);
+        if ($problem) {
+            return $problem;
+        }
+    }
+    $info = @getimagesize((string) $_FILES[$field]['tmp_name']);
+    if ($info === false) {
+        return 'That file is not a photo this house can keep.';
+    }
+    $width = (int) $info[0];
+    $height = (int) $info[1];
+    if ($width < 1 || $height < 1 || $width > 8000 || $height > 8000 || ($width * $height) > 24000000) {
+        return 'That photo is larger than this house can take.';
+    }
+    $name = (string) ($_FILES[$field]['name'] ?? '');
+    if (preg_match('/\.(php|phtml|phar|cgi|pl|exe|sh)(\.|$)/i', $name)) {
+        return 'That file is not a photo this house can keep.';
+    }
+    return null;
+}
+
+function api_unlink_upload(string $path): void
+{
+    if (preg_match('#^/uploads/(avatars|covers)/[A-Fa-f0-9]{16}\.(jpg|png|webp|gif)$#', $path) !== 1) {
+        return;
+    }
+    $root = realpath(dirname(__DIR__) . '/uploads');
+    $file = realpath(dirname(__DIR__) . $path);
+    if (!$root || !$file || !is_file($file)) {
+        return;
+    }
+    $prefix = $root . DIRECTORY_SEPARATOR;
+    if (!str_starts_with($file, $prefix)) {
+        return;
+    }
+    unlink($file);
+}
+
+function api_sweep_pending(int $userId): void
+{
+    $rows = q(
+        'SELECT id, path FROM content_images WHERE user_id = ? AND parent_id = 0 AND created_at < DATE_SUB(NOW(), INTERVAL 2 DAY) LIMIT 8',
+        [$userId]
+    );
+    foreach ($rows as $row) {
+        exec_sql('DELETE FROM content_images WHERE id = ? AND user_id = ? AND parent_id = 0', [(int) $row['id'], $userId]);
+        api_unlink_upload((string) $row['path']);
+    }
+}
+
+function api_quiet_image(string $webPath): void
+{
+    if (preg_match('#^/uploads/(avatars|covers)/[A-Fa-f0-9]{16}\.(jpg|png|webp)$#', $webPath, $match) !== 1) {
+        return;
+    }
+    if (!function_exists('imagecreatetruecolor')) {
+        error_log('Go Solo API: image kept without re-encode');
+        return;
+    }
+    $ext = $match[2];
+    $full = dirname(__DIR__) . $webPath;
+    if (!is_file($full)) {
+        return;
+    }
+    $orientation = 1;
+    if ($ext === 'jpg' && function_exists('exif_read_data')) {
+        $exif = @exif_read_data($full);
+        if (is_array($exif)) {
+            $orientation = (int) ($exif['Orientation'] ?? 1);
+        }
+    }
+    $source = match ($ext) {
+        'jpg' => @imagecreatefromjpeg($full),
+        'png' => @imagecreatefrompng($full),
+        'webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($full) : false,
+        default => false,
+    };
+    if (!$source) {
+        error_log('Go Solo API: image kept without re-encode');
+        return;
+    }
+    if (in_array($orientation, [3, 6, 8], true) && function_exists('imagerotate')) {
+        $angle = $orientation === 3 ? 180 : ($orientation === 6 ? -90 : 90);
+        $turned = @imagerotate($source, $angle, 0);
+        if ($turned) {
+            imagedestroy($source);
+            $source = $turned;
+        }
+    }
+    $width = imagesx($source);
+    $height = imagesy($source);
+    $max = 2000;
+    $image = $source;
+    if ($width > $max || $height > $max) {
+        $scale = $max / max($width, $height);
+        $nextWidth = max(1, (int) round($width * $scale));
+        $nextHeight = max(1, (int) round($height * $scale));
+        $resized = imagecreatetruecolor($nextWidth, $nextHeight);
+        if ($ext !== 'jpg') {
+            imagealphablending($resized, false);
+            imagesavealpha($resized, true);
+        }
+        imagecopyresampled($resized, $source, 0, 0, 0, 0, $nextWidth, $nextHeight, $width, $height);
+        imagedestroy($source);
+        $image = $resized;
+    }
+    $temporary = $full . '.tmp';
+    $saved = match ($ext) {
+        'jpg' => imagejpeg($image, $temporary, 82),
+        'png' => imagepng($image, $temporary),
+        'webp' => function_exists('imagewebp') ? imagewebp($image, $temporary, 82) : false,
+        default => false,
+    };
+    imagedestroy($image);
+    if ($saved && is_file($temporary)) {
+        rename($temporary, $full);
+        return;
+    }
+    if (is_file($temporary)) {
+        unlink($temporary);
+    }
+    error_log('Go Solo API: image kept without re-encode');
+}
+
+function api_safe_media(string $path): string
+{
+    $path = trim($path);
+    if ($path === '' || str_contains($path, '..')) {
+        return '';
+    }
+    if (preg_match('#^/(uploads/(avatars|covers|reading)|assets/images)/[A-Za-z0-9._/-]+$#', $path) !== 1) {
+        return '';
+    }
+    return api_public_media($path);
+}
+
+function api_media_payload(string $id, string $path, string $alt, string $context): array
+{
+    return [
+        'id' => $id,
+        'url' => api_safe_media($path),
+        'alt' => $alt,
+        'context' => $context,
+    ];
+}
+
+function api_media_create(): void
+{
+    $user = api_member();
+    $userId = (int) $user['id'];
+    api_media_pace($userId);
+    $context = api_field('context', 20);
+    if (!in_array($context, ['campfire', 'story', 'waypoint', 'comment', 'profile'], true)) {
+        error_log('Go Solo API: media rejected, context');
+        api_fail(422, 'validation', 'That photo does not belong to this room.');
+    }
+    $problem = api_upload_guard('file');
+    if ($problem) {
+        error_log('Go Solo API: media rejected, file');
+        api_fail(422, 'validation', $problem);
+    }
+    if (!function_exists('store_upload')) {
+        api_fail(503, 'unavailable', 'The house cannot store a photo yet.');
+    }
+    api_sweep_pending($userId);
+    $path = store_upload('file', $context === 'profile' ? 'avatars' : 'covers');
+    if ($path === null) {
+        error_log('Go Solo API: media store failed');
+        api_fail(422, 'validation', 'That photo did not land. Try again.');
+    }
+    api_quiet_image($path);
+    $alt = clip(api_field('alt', 255), 255);
+    if ($context === 'profile') {
+        $previous = one('SELECT avatar_path FROM profiles WHERE user_id = ?', [$userId]);
+        exec_sql('UPDATE profiles SET avatar_path = ? WHERE user_id = ?', [$path, $userId]);
+        if ($previous && (string) $previous['avatar_path'] !== $path) {
+            api_unlink_upload((string) $previous['avatar_path']);
+        }
+        api_ok(['media' => api_media_payload('avatar', $path, '', 'profile')]);
+    }
+    exec_sql(
+        'INSERT INTO content_images (user_id, parent_type, parent_id, path, alt, created_at) VALUES (?, ?, 0, ?, ?, NOW())',
+        [$userId, $context, $path, $alt]
+    );
+    api_ok(['media' => api_media_payload((string) db()->lastInsertId(), $path, $alt, $context)]);
+}
+
+function api_image_visible(string $type, int $parentId, int $viewer): bool
+{
+    if ($type === 'comment') {
+        $comment = one('SELECT user_id, hidden FROM comments WHERE id = ?', [$parentId]);
+        return $comment && ((int) $comment['hidden'] === 0 || (int) $comment['user_id'] === $viewer);
+    }
+    $table = match ($type) {
+        'story' => 'stories',
+        'campfire' => 'campfire_posts',
+        'waypoint' => 'waypoint_posts',
+        default => '',
+    };
+    if ($table === '') {
+        return false;
+    }
+    $row = one("SELECT user_id, hidden FROM {$table} WHERE id = ?", [$parentId]);
+    return $row && ((int) $row['hidden'] === 0 || (int) $row['user_id'] === $viewer);
+}
+
+function api_media_show(string $id): void
+{
+    $user = api_member();
+    $userId = (int) $user['id'];
+    if ($id === 'avatar') {
+        $row = one('SELECT avatar_path FROM profiles WHERE user_id = ?', [$userId]);
+        $path = (string) ($row['avatar_path'] ?? '');
+        if ($path === '') {
+            api_fail(404, 'not_found', 'There is no profile photo.');
+        }
+        api_ok(['media' => api_media_payload('avatar', $path, '', 'profile')]);
+    }
+    $row = one('SELECT id, user_id, parent_type, parent_id, path, alt FROM content_images WHERE id = ?', [(int) $id]);
+    if (!$row) {
+        api_fail(404, 'not_found', 'That photo is not here.');
+    }
+    $owner = (int) $row['user_id'] === $userId;
+    $attached = (int) $row['parent_id'] > 0;
+    if (!$owner && (!$attached || !api_image_visible((string) $row['parent_type'], (int) $row['parent_id'], $userId))) {
+        api_fail(404, 'not_found', 'That photo is not here.');
+    }
+    api_ok(['media' => api_media_payload((string) $row['id'], (string) $row['path'], (string) $row['alt'], (string) $row['parent_type'])]);
+}
+
+function api_media_delete(string $id): void
+{
+    $user = api_member();
+    $userId = (int) $user['id'];
+    if ($id === 'avatar') {
+        $row = one('SELECT avatar_path FROM profiles WHERE user_id = ?', [$userId]);
+        exec_sql('UPDATE profiles SET avatar_path = ? WHERE user_id = ?', ['', $userId]);
+        api_unlink_upload((string) ($row['avatar_path'] ?? ''));
+        api_ok(['removed' => true]);
+    }
+    $row = one('SELECT id, path, user_id FROM content_images WHERE id = ?', [(int) $id]);
+    if (!$row || (int) $row['user_id'] !== $userId) {
+        api_fail(404, 'not_found', 'That photo is not yours.');
+    }
+    exec_sql('DELETE FROM content_images WHERE id = ? AND user_id = ?', [(int) $id, $userId]);
+    api_unlink_upload((string) $row['path']);
+    api_ok(['removed' => true]);
+}
+
+function api_claim_media(int $userId, int $mediaId, string $type, int $parentId, string $alt): string
+{
+    if ($mediaId <= 0) {
+        return '';
+    }
+    if (!in_array($type, ['story', 'campfire', 'waypoint', 'comment'], true) || $parentId <= 0) {
+        return 'That photo cannot be attached here.';
+    }
+    $row = one('SELECT id, user_id, parent_type, parent_id, path FROM content_images WHERE id = ?', [$mediaId]);
+    if (!$row || (int) $row['user_id'] !== $userId) {
+        return 'That photo is not yours.';
+    }
+    if ((string) $row['parent_type'] !== $type || (int) $row['parent_id'] !== 0) {
+        return 'Choose the photo again, then share.';
+    }
+    if (preg_match('#^/uploads/covers/[A-Fa-f0-9]{16}\.(jpg|png|webp|gif)$#', (string) $row['path']) !== 1) {
+        return 'That photo is not in the house folder.';
+    }
+    exec_sql(
+        'UPDATE content_images SET parent_id = ?, alt = ? WHERE id = ? AND user_id = ? AND parent_id = 0',
+        [$parentId, clip($alt, 255), $mediaId, $userId]
+    );
+    return '';
+}
+
+function api_stage_image(int $userId, string $type, int $parentId, array &$doomed): string
+{
+    $mediaId = (int) api_field('mediaId', 20);
+    $clear = in_array(strtolower(api_field('clearImage', 10)), ['1', 'true'], true);
+    $alt = api_field('imageAlt', 255);
+    $doomed = [];
+    if ($clear || $mediaId > 0) {
+        $doomed = array_column(
+            q('SELECT path FROM content_images WHERE parent_type = ? AND parent_id = ?', [$type, $parentId]),
+            'path'
+        );
+        exec_sql('DELETE FROM content_images WHERE parent_type = ? AND parent_id = ?', [$type, $parentId]);
+    }
+    if ($mediaId > 0) {
+        return api_claim_media($userId, $mediaId, $type, $parentId, $alt);
+    }
+    if (!$clear) {
+        $current = one('SELECT id FROM content_images WHERE parent_type = ? AND parent_id = ? ORDER BY id LIMIT 1', [$type, $parentId]);
+        if ($current) {
+            exec_sql('UPDATE content_images SET alt = ? WHERE id = ?', [clip($alt, 255), (int) $current['id']]);
+        }
+    }
+    return '';
+}
+
+function api_attached_image(string $type, int $id): array
+{
+    if ($id <= 0) {
+        return ['url' => '', 'alt' => ''];
+    }
+    try {
+        $row = one(
+            'SELECT path, alt FROM content_images WHERE parent_type = ? AND parent_id = ? ORDER BY id LIMIT 1',
+            [$type, $id]
+        );
+    } catch (Throwable $e) {
+        return ['url' => '', 'alt' => ''];
+    }
+    if (!$row) {
+        return ['url' => '', 'alt' => ''];
+    }
+    return [
+        'url' => api_safe_media((string) $row['path']),
+        'alt' => (string) $row['alt'],
+    ];
+}
+
+function api_reading_note(bool $save): void
+{
+    $user = api_member();
+    if (!function_exists('path_table') || !path_table('reading_notes')) {
+        api_fail(503, 'unavailable', 'The reading notebook is not on this house yet.');
+    }
+    $slug = api_field('slug', 120);
+    if ($slug === '') {
+        $slug = clip(trim((string) ($_GET['slug'] ?? '')), 120);
+    }
+    if (preg_match('/^[a-z0-9-]{1,120}$/', $slug) !== 1) {
+        api_fail(422, 'validation', 'That reading is not here.');
+    }
+    $reading = one('SELECT id FROM readings WHERE slug = ? AND status = ?', [$slug, 'published']);
+    if (!$reading) {
+        api_fail(404, 'not_found', 'That reading is not here.');
+    }
+    $readingId = (int) $reading['id'];
+    $userId = (int) $user['id'];
+    if (!$save) {
+        $row = one('SELECT body FROM reading_notes WHERE user_id = ? AND reading_id = ?', [$userId, $readingId]);
+        api_ok(['body' => (string) ($row['body'] ?? '')]);
+    }
+    $body = trim(api_field('body', 4000));
+    if ($body === '') {
+        exec_sql('DELETE FROM reading_notes WHERE user_id = ? AND reading_id = ?', [$userId, $readingId]);
+        api_ok(['body' => '']);
+    }
+    exec_sql(
+        'INSERT INTO reading_notes (user_id, reading_id, body, updated_at) VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE body = VALUES(body), updated_at = NOW()',
+        [$userId, $readingId, $body]
+    );
+    api_ok(['body' => $body]);
+}
+
+function api_device(bool $remove): void
+{
+    $user = api_member();
+    if (!function_exists('path_table') || !path_table('push_devices')) {
+        api_fail(503, 'unavailable', 'This house cannot remember a phone for alerts yet.');
+    }
+    $token = api_field('token', 255);
+    $platform = api_field('platform', 20);
+    if (!in_array($platform, ['ios', 'android'], true) || preg_match('/^[A-Za-z0-9:_\\-\\.\\[\\]]{16,255}$/', $token) !== 1) {
+        api_fail(422, 'validation', 'That phone registration is not usable.');
+    }
+    $userId = (int) $user['id'];
+    if ($remove) {
+        exec_sql('UPDATE push_devices SET revoked_at = NOW() WHERE user_id = ? AND token = ? AND revoked_at IS NULL', [$userId, $token]);
+        api_ok(['registered' => false]);
+    }
+    $key = 'device:' . $userId;
+    $count = one(
+        'SELECT COUNT(*) AS n FROM api_attempts WHERE email = ? AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)',
+        [$key]
+    );
+    if ((int) ($count['n'] ?? 0) >= 10) {
+        api_fail(429, 'rate_limited', 'That is a little fast. Wait a moment, then try again.');
+    }
+    exec_sql('INSERT INTO api_attempts (email, created_at) VALUES (?, NOW())', [$key]);
+    $existing = one('SELECT id FROM push_devices WHERE token = ?', [$token]);
+    if ($existing) {
+        exec_sql(
+            'UPDATE push_devices SET user_id = ?, platform = ?, revoked_at = NULL WHERE id = ?',
+            [$userId, $platform, (int) $existing['id']]
+        );
+    } else {
+        exec_sql(
+            'INSERT INTO push_devices (user_id, platform, token, created_at) VALUES (?, ?, ?, NOW())',
+            [$userId, $platform, $token]
+        );
+    }
+    api_ok(['registered' => true]);
+}
+
 function api_campfire(): void
 {
     $user = api_member();
@@ -714,22 +1182,42 @@ function api_campfire(): void
     if ($title === '' || writing_is_empty($body)) {
         api_fail(422, 'validation', 'Write something before you share it.');
     }
-    if (!empty(api_input()['imageUrl'])) {
-        api_fail(422, 'validation', 'A photo from the phone is added on the website for now. Your words are still here.');
+    api_reject_loose_image();
+    if ($waypointId > 0 && (!rooms_ready() || !sits_with((int) $user['id'], $waypointId))) {
+        api_fail(403, 'forbidden', 'Take a seat in that waypoint before starting a discussion.');
     }
-    if ($waypointId > 0) {
-        if (!rooms_ready() || !sits_with((int) $user['id'], $waypointId)) {
-            api_fail(403, 'forbidden', 'Take a seat in that waypoint before starting a discussion.');
+    $pdo = db();
+    $doomed = [];
+    $pdo->beginTransaction();
+    try {
+        if ($waypointId > 0) {
+            exec_sql(
+                'INSERT INTO waypoint_posts (waypoint_id, user_id, title, body, created_at) VALUES (?, ?, ?, ?, NOW())',
+                [$waypointId, (int) $user['id'], $title, $body]
+            );
+            $type = 'waypoint';
+        } else {
+            exec_sql(
+                'INSERT INTO campfire_posts (user_id, title, body, hidden, locked, created_at) VALUES (?, ?, ?, 0, 0, NOW())',
+                [(int) $user['id'], $title, $body]
+            );
+            $type = 'campfire';
         }
-        exec_sql(
-            'INSERT INTO waypoint_posts (waypoint_id, user_id, title, body, created_at) VALUES (?, ?, ?, ?, NOW())',
-            [$waypointId, (int) $user['id'], $title, $body]
-        );
-    } else {
-        exec_sql(
-            'INSERT INTO campfire_posts (user_id, title, body, hidden, locked, created_at) VALUES (?, ?, ?, 0, 0, NOW())',
-            [(int) $user['id'], $title, $body]
-        );
+        $id = (int) $pdo->lastInsertId();
+        $problem = api_stage_image((int) $user['id'], $type, $id, $doomed);
+        if ($problem !== '') {
+            $pdo->rollBack();
+            api_fail(422, 'validation', $problem);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+    foreach ($doomed as $path) {
+        api_unlink_upload((string) $path);
     }
     api_ok(api_shell());
 }
@@ -742,20 +1230,46 @@ function api_story(bool $update): void
     if ($title === '' || writing_is_empty($body)) {
         api_fail(422, 'validation', 'A story needs a title and what happened.');
     }
-    if (!empty(api_input()['imageUrl'])) {
-        api_fail(422, 'validation', 'A photo from the phone is added on the website for now. Your words are still here.');
-    }
+    api_reject_loose_image();
+    $userId = (int) $user['id'];
     if ($update) {
         $id = (int) api_text('id', 20);
-        exec_sql(
-            'UPDATE stories SET title = ?, body = ?, what_i_did = ? WHERE id = ? AND user_id = ?',
-            [$title, $body, $body, $id, (int) $user['id']]
-        );
-    } else {
-        exec_sql(
-            'INSERT INTO stories (user_id, title, what_i_did, expectations, what_happened, would_do_again, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-            [(int) $user['id'], $title, $body, '', '', '', $body]
-        );
+        $owned = one('SELECT id FROM stories WHERE id = ? AND user_id = ?', [$id, $userId]);
+        if (!$owned) {
+            api_fail(403, 'forbidden', 'You can edit a story you wrote.');
+        }
+    }
+    $pdo = db();
+    $doomed = [];
+    $pdo->beginTransaction();
+    try {
+        if ($update) {
+            $id = (int) api_text('id', 20);
+            exec_sql(
+                'UPDATE stories SET title = ?, body = ?, what_i_did = ?, image_path = ? WHERE id = ? AND user_id = ?',
+                [$title, $body, $body, '', $id, $userId]
+            );
+        } else {
+            exec_sql(
+                'INSERT INTO stories (user_id, title, what_i_did, expectations, what_happened, would_do_again, body, image_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+                [$userId, $title, $body, '', '', '', $body, '']
+            );
+            $id = (int) $pdo->lastInsertId();
+        }
+        $problem = api_stage_image($userId, 'story', $id, $doomed);
+        if ($problem !== '') {
+            $pdo->rollBack();
+            api_fail(422, 'validation', $problem);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+    foreach ($doomed as $path) {
+        api_unlink_upload((string) $path);
     }
     api_ok(api_shell());
 }
@@ -786,10 +1300,31 @@ function api_comment(): void
     if (!$parent) {
         api_fail(404, 'not_found', 'That conversation is not here.');
     }
-    exec_sql(
-        'INSERT INTO comments (user_id, target_type, target_id, body, created_at) VALUES (?, ?, ?, ?, NOW())',
-        [(int) $user['id'], $commentType, $id, $body]
-    );
+    api_reject_loose_image();
+    $pdo = db();
+    $doomed = [];
+    $pdo->beginTransaction();
+    try {
+        exec_sql(
+            'INSERT INTO comments (user_id, target_type, target_id, body, created_at) VALUES (?, ?, ?, ?, NOW())',
+            [(int) $user['id'], $commentType, $id, $body]
+        );
+        $commentId = (int) $pdo->lastInsertId();
+        $problem = api_stage_image((int) $user['id'], 'comment', $commentId, $doomed);
+        if ($problem !== '') {
+            $pdo->rollBack();
+            api_fail(422, 'validation', $problem);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+    foreach ($doomed as $path) {
+        api_unlink_upload((string) $path);
+    }
     if ((int) $parent['user_id'] !== (int) $user['id']) {
         notify((int) $parent['user_id'], 'Someone replied.', '/' . ($commentType === 'story' ? 'out-there/' . $id : 'campfire/' . $id));
     }
@@ -1546,7 +2081,8 @@ function api_world(int $viewer): array
                 'expecting' => (string) $row['expectations'],
                 'actuallyHappened' => (string) $row['what_happened'],
                 'wouldDoAgain' => 'yes',
-                'imageUrl' => api_public_media((string) ($row['image_path'] ?? '')),
+                'imageUrl' => ($storyImage = api_attached_image('story', (int) $row['id']))['url'] ?: api_safe_media((string) ($row['image_path'] ?? '')),
+                'imageAlt' => $storyImage['alt'],
                 'createdAt' => api_time((string) $row['created_at']),
                 'hidden' => (int) $row['hidden'] === 1,
                 'pinned' => (int) ($row['pinned'] ?? 0) === 1,
@@ -1567,12 +2103,15 @@ function api_world(int $viewer): array
             } else {
                 $type = 'out-there';
             }
+            $commentImage = api_attached_image('comment', (int) $row['id']);
             return [
                 'id' => (string) $row['id'],
                 'authorId' => (string) $row['user_id'],
                 'targetType' => $type,
                 'targetId' => $id,
                 'body' => (string) $row['body'],
+                'imageUrl' => $commentImage['url'],
+                'imageAlt' => $commentImage['alt'],
                 'createdAt' => api_time((string) $row['created_at']),
                 'hidden' => (int) $row['hidden'] === 1,
             ];
@@ -1654,6 +2193,7 @@ function api_user_seeds(): array
 
 function api_post(array $row, string $prefix): array
 {
+    $image = api_attached_image($prefix === 'w-' ? 'waypoint' : 'campfire', (int) $row['id']);
     return [
         'id' => $prefix . $row['id'],
         'authorId' => (string) $row['user_id'],
@@ -1662,6 +2202,8 @@ function api_post(array $row, string $prefix): array
         'title' => (string) $row['title'],
         'body' => (string) $row['body'],
         'waypointId' => isset($row['waypoint_id']) ? (string) $row['waypoint_id'] : '',
+        'imageUrl' => $image['url'],
+        'imageAlt' => $image['alt'],
         'createdAt' => api_time((string) $row['created_at']),
         'hidden' => (int) ($row['hidden'] ?? 0) === 1,
         'pinned' => (int) ($row['pinned'] ?? 0) === 1,

@@ -8,7 +8,7 @@ export default function Policies() {
       <TopBar back title="Policies" />
       <Title>Privacy</Title>
       <Body>
-        Go Solo stores the account, garden, writing, and conversations you choose to create, in the same database as the website. The app keeps the sign-in token in the device keychain or keystore. It does not claim end-to-end encryption, anonymity, or zero data collection.
+        Go Solo stores the account, garden, writing, and conversations you choose to create, in the same database as the website. A photo is sent as a file and checked by the house before it is kept. A reading note stays with your account and is not posted. The app keeps the sign-in token in the device keychain or keystore. It does not claim end-to-end encryption, anonymity, or zero data collection. Phone alerts are not sent.
       </Body>
       <Title>Community</Title>
       {content.manifesto.map((line) => (

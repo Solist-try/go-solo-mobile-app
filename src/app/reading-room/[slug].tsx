@@ -11,20 +11,39 @@ function noteKey(userId: string, slug: string) {
 
 export default function ReadingDetail() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { readings, user } = useCommunity();
+  const { readings, user, readingNote, saveReadingNote } = useCommunity();
   const reading = readings.find((item) => item.slug === slug);
   const site = (process.env.EXPO_PUBLIC_SITE_URL || process.env.EXPO_PUBLIC_API_URL || "").replace(/\/$/, "");
   const [note, setNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
+  const [kept, setKept] = useState<"account" | "phone" | "">("");
   const [showSeed, setShowSeed] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!user || !reading) return;
-    AsyncStorage.getItem(noteKey(user.id, reading.slug)).then((value) => {
-      if (value) setSavedNote(value);
-    });
-  }, [user, reading]);
+    let cancel = false;
+    const slug = reading.slug;
+    const localKey = noteKey(user.id, slug);
+    void (async () => {
+      const local = (await AsyncStorage.getItem(localKey)) ?? "";
+      const result = await readingNote(slug);
+      if (cancel) return;
+      if ("body" in result && result.body) {
+        setSavedNote(result.body);
+        setKept("account");
+        await AsyncStorage.setItem(localKey, result.body);
+        return;
+      }
+      if (local) {
+        setSavedNote(local);
+        setKept("phone");
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [user, reading, readingNote]);
 
   if (!reading) {
     return (
@@ -38,19 +57,26 @@ export default function ReadingDetail() {
   const article = reading;
   const waypoint = article.waypoints?.[0];
 
-  async function saveNote() {
+  async function saveNote(fromPhone = "") {
     if (!user) {
       router.push("/sign-in");
       return;
     }
-    const text = note.trim();
+    const text = (fromPhone || note).trim();
     if (!text) {
       setError("Write a few words, or leave it for later.");
       return;
     }
+    const result = await saveReadingNote(article.slug, text);
     await AsyncStorage.setItem(noteKey(user.id, article.slug), text);
     setSavedNote(text);
     setNote("");
+    if ("error" in result) {
+      setKept("phone");
+      setError(result.code === "offline" ? "The house did not answer. This copy is on the phone." : result.error);
+      return;
+    }
+    setKept("account");
     setError("");
   }
 
@@ -76,13 +102,22 @@ export default function ReadingDetail() {
         <Subtitle>What did this bring up for you?</Subtitle>
         {savedNote ? (
           <>
-            <Muted>Saved on this device.</Muted>
+            <Muted>{kept === "account" ? "Saved with your account. Only you can read it." : "Saved on this phone until the house can keep it."}</Muted>
             <Body>{savedNote}</Body>
+            {kept === "phone" ? (
+              <Button
+                label="Keep it with your account"
+                tone="quiet"
+                onPress={() => {
+                  void saveNote(savedNote);
+                }}
+              />
+            ) : null}
           </>
         ) : (
           <>
             <Field label="A private note" value={note} onChangeText={setNote} multiline />
-            <Muted>This note stays on this phone. The house does not keep a reading notebook yet.</Muted>
+            <Muted>This stays with your account. It is not posted to the campfire.</Muted>
             <Button label="Save a note" tone="quiet" onPress={() => void saveNote()} />
           </>
         )}

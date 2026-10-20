@@ -303,6 +303,8 @@ export type Comment = {
   targetType: "out-there" | "campfire";
   targetId: string;
   body: string;
+  imageUrl?: string;
+  imageAlt?: string;
   createdAt: string;
   hidden?: boolean;
 };

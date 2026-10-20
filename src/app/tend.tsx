@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Body, Button, Choice, ErrorNote, Field, Screen, Title, TopBar } from "@/components/ui";
 import { CHECK_IN_FREQUENCIES, CHECK_IN_STYLES, INTERESTS, SUPPORT_WITH, type LifeSeed } from "@/domain/types";
 import { createId } from "@/domain/format";
-import { pickPhoto } from "@/components/media";
+import { emptyPhoto, PhotoDraft, type PhotoState } from "@/components/photo-draft";
 import { useCommunity } from "@/state/community";
 
 export default function Tend() {
-  const { user, updateProfile, setInterests, saveGrowing, saveHelp, uploadAvatar } = useCommunity();
+  const { user, updateProfile, setInterests, saveGrowing, saveHelp } = useCommunity();
+  const [, setPhoto] = useState<PhotoState>(emptyPhoto);
   const [name, setName] = useState(user?.displayName ?? "");
   const [bio, setBio] = useState(user?.bio ?? "");
   const [location, setLocation] = useState(user?.location ?? "");
@@ -26,15 +27,7 @@ export default function Tend() {
       <Field label="Name" value={name} onChangeText={setName} />
       <Field label="A note about you" value={bio} onChangeText={setBio} multiline />
       <Field label="Location" value={location} onChangeText={setLocation} />
-      <Button
-        label="Choose a profile photo"
-        tone="quiet"
-        onPress={async () => {
-          const asset = await pickPhoto();
-          if (!asset) return;
-          setError((await uploadAvatar(asset.uri, asset.mimeType ?? "image/jpeg")) ?? "");
-        }}
-      />
+      <PhotoDraft context="profile" existingUrl={user.avatarUrl} onChange={setPhoto} />
       {INTERESTS.map((interest) => (
         <Choice
           key={interest.id}

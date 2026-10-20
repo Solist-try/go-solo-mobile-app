@@ -6,7 +6,7 @@ A session is doing well when it ends in a real-life step: a resource read, a dis
 
 Home stays finite. It shows one growing seed, one waypoint, one campfire next step, one reading, conversations that are actually waiting, and one suggested action. It does not rank posts, and it does not keep a directory of every room.
 
-A reading ends with a reflection bridge: a note saved on the device, a campfire post in the member's own words, a waypoint only when `waypoint_readings` or a featured reading links them, and an optional seed. The app does not invent those links from categories or keywords. The house does not yet store a reading notebook, so a saved note stays on the phone and says so.
+A reading ends with a reflection bridge: a private note kept with the member's account, a campfire post in the member's own words, a waypoint only when `waypoint_readings` or a featured reading links them, and an optional seed. The app does not invent those links from categories or keywords. If the house has not had `reading_notes` installed yet, the note stays on the phone and says so.
 
 Campfire, conversations, and notices stay contextual. There is no follow list, no discovery feed, no online indicator, and no read receipt.
 

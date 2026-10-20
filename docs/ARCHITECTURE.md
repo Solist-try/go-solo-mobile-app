@@ -9,8 +9,8 @@ The live Go Solo community is the PHP site and its MySQL database. The phone tal
 3. `POST /api/v1/session/refresh` rotates the pair. Reusing a revoked refresh token revokes the whole family.
 4. The API loads the same PHP functions the website uses for contact, blocks, chairs, and steward checks. A private conversation is allowed only when that code says the two members may talk. Sitting in the same waypoint is not enough.
 5. Campfire posts and waypoint discussions have separate numeric ids, so the API prefixes them `c-` and `w-`.
-6. Photos chosen on the phone are refused. The website upload remains the place a picture is stored. A device path is never written into MySQL.
-7. Named reactions and phone push tokens are not stored. There is no table for them.
+6. A photo is uploaded as a file to `POST /api/v1/media`. The server uses the website's image check and stores its own path. A `file://` path is rejected. Publish sends that media id.
+7. A reading note is private to the member, in `reading_notes`. `push_devices` can remember a phone later. This build does not ask for notification permission and does not send a token. Named reactions are not stored.
 
 ## Visibility
 
